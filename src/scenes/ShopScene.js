@@ -1,4 +1,5 @@
 import { GAME_WIDTH, GAME_HEIGHT, C } from '../constants.js';
+import { sfxShopSelect } from '../effects/SoundFX.js';
 
 const SKILLS = [
   { id: 'damage', name: 'Coding Conventions', desc: '+25% Base Damage', icon: 'skill_damage' },
@@ -60,6 +61,7 @@ export default class ShopScene extends Phaser.Scene {
   }
 
   _selectSkill(id) {
+    sfxShopSelect();
     const ups = this.registry.get('upgrades') || { damage: 0, cost: 0, rewind: 0, charge: 0, splits: 0, heal: 0 };
     ups[id] = (ups[id] || 0) + 1;
     this.registry.set('upgrades', ups);

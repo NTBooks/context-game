@@ -1,4 +1,5 @@
 import { LANES, TANK_X, C } from '../constants.js';
+import { sfxLaneChange } from '../effects/SoundFX.js';
 
 export class Tank extends Phaser.GameObjects.Container {
   constructor(scene, laneIndex = 1) {
@@ -61,6 +62,7 @@ export class Tank extends Phaser.GameObjects.Container {
   moveLane(dir) {
     const next = Phaser.Math.Clamp(this.currentLane + dir, 0, LANES.length - 1);
     if (next === this.currentLane) return;
+    sfxLaneChange();
     this.currentLane = next;
     this._targetY = LANES[next];
   }

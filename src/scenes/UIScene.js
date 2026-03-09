@@ -5,6 +5,8 @@ import {
   FUNNY_PROMPTS, STATE,
   C, ctxToColor,
 } from '../constants.js';
+import { isMuted, toggleMute as toggleSfxMute } from '../effects/SoundFX.js';
+import { getMusicSystem } from '../audio/MusicSystem.js';
 
 // Layout constants for the UI
 const BAR_X    = 18;   // heat/context bar left edge
@@ -56,9 +58,25 @@ export default class UIScene extends Phaser.Scene {
     this.perfectTxt = this._txt(CHG_X + CHG_W / 2, CHG_Y - 15, '', '12px', '#ffd700').setOrigin(0.5, 1);
     this._txt(CHG_X, CHG_Y + CHG_H + 5, 'HOLD [SPACE] TO CRAFT · RELEASE TO SEND · [ENTER] SKIP TURN', '10px', '#445566');
 
-    // ── Ability indicators ───────────────────────────────────
+    // ── Ability indicators (clickable) ─────────────────────────
     this.rewindTxt = this._txt(CHG_X + CHG_W + 48, CHG_Y - 4,  '[R] REWIND', '12px', '#00e5ff');
     this.splitTxt  = this._txt(CHG_X + CHG_W + 48, CHG_Y + 14, '[Q] SPLIT   0%', '12px', '#8899aa');
+    this._abilityHitW = 98;
+    this._abilityHitH = 18;
+    this._rewindZone = this.add.rectangle(CHG_X + CHG_W + 48 + this._abilityHitW / 2, CHG_Y - 4, this._abilityHitW, this._abilityHitH, 0x000000, 0)
+      .setOrigin(0.5).setDepth(81).setInteractive({ useHandCursor: true });
+    this._splitZone  = this.add.rectangle(CHG_X + CHG_W + 48 + this._abilityHitW / 2, CHG_Y + 14, this._abilityHitW, this._abilityHitH, 0x000000, 0)
+      .setOrigin(0.5).setDepth(81).setInteractive({ useHandCursor: true });
+    this._rewindZone.on('pointerdown', () => { if (this.registry.get('rewindCount') > 0) this.registry.set('requestRewind', true); });
+    this._splitZone.on('pointerdown', () => { if (this.registry.get('splitReady')) this.registry.set('requestSplit', true); });
+    this._rewindZone.on('pointerover', () => this.rewindTxt.setStyle({ color: '#88ddff' }));
+    this._rewindZone.on('pointerout', () => this.rewindTxt.setStyle({ color: (this.registry.get('rewindCount') || 0) > 0 ? '#00e5ff' : '#445566' }));
+    this._splitZone.on('pointerover', () => this.splitTxt.setStyle({ color: this.registry.get('splitReady') ? '#88ff88' : '#8899aa' }));
+    this._splitZone.on('pointerout', () => this.splitTxt.setStyle({ color: this.registry.get('splitReady') ? '#39ff14' : '#8899aa' }));
+
+    // Right-click ability menu (created when needed)
+    this._abilityMenuBackdrop = null;
+    this._abilityMenuContainer = null;
 
     // ── Hallucination overlay ────────────────────────────────
     this._halluciW = GAME_WIDTH;
@@ -86,6 +104,21 @@ export default class UIScene extends Phaser.Scene {
         .setOrigin(0.5).setAlpha(0);
       this._loadoutIcons.push({ img, badge });
     }
+
+    // ── Mute icons (bottom right): music ♪ and SFX S ─────────────
+    const iconSize = 26;
+    const iconY = GAME_HEIGHT - 12 - iconSize / 2;
+    const pad = 12;
+    const gap = 6;
+    const musicX = GAME_WIDTH - pad - gap - iconSize - iconSize / 2;
+    const sfxX = GAME_WIDTH - pad - iconSize / 2;
+
+    this._musicIcon = this._makeMuteIcon(musicX, iconY, iconSize, '♪', () => {
+      getMusicSystem().toggleMute();
+    });
+    this._sfxIcon = this._makeMuteIcon(sfxX, iconY, iconSize, 'S', () => {
+      toggleSfxMute();
+    });
 
     // ── Prompt animation state ────────────────────────────────
     this._promptCooldown  = 0;   // ms until next funny prompt
@@ -136,6 +169,9 @@ export default class UIScene extends Phaser.Scene {
     };
     this.stateTxt.setText(stateLabels[state] || '');
     this.stateTxt.setStyle({ color: state === STATE.PLAYER_TURN ? '#39ff14' : '#6b2fa0' });
+
+    this._musicIcon.setAlpha(getMusicSystem().isMuted() ? 0.4 : 1);
+    this._sfxIcon.setAlpha(isMuted() ? 0.4 : 1);
 
     this.ctxPctTxt.setText(`${Math.round(ctx)}%`);
     this.chgPctTxt.setText(`${Math.round(chargeLvl)}%`);
@@ -193,8 +229,72 @@ export default class UIScene extends Phaser.Scene {
     }
     this._lastCharging = charging;
 
+    // ── Right-click ability menu ────────────────────────────────
+    const abilityMenu = this.registry.get('abilityMenu');
+    if (abilityMenu) {
+      this.registry.remove('abilityMenu');
+      this._showAbilityMenu(abilityMenu.x, abilityMenu.y, rewindAvail, splitReady);
+    }
+
     // ── Hallucination FX when context is high ─────────────────
     this._updateHallucinationFX(ctx, time, delta);
+  }
+
+  _showAbilityMenu(x, y, rewindAvail, splitReady) {
+    if (!rewindAvail && !splitReady) return;
+    this._hideAbilityMenu();
+    this.registry.set('abilityMenuOpen', true);
+    const pad = 6;
+    const rowH = 24;
+    const w = 120;
+    const h = pad * 2 + (rewindAvail ? rowH : 0) + (splitReady ? rowH : 0);
+    const menuY = y + h + pad > GAME_HEIGHT ? y - h - pad : y + pad;
+    const backdrop = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH * 2, GAME_HEIGHT * 2, 0x000000, 0.3)
+      .setDepth(95).setInteractive({ useHandCursor: false });
+    const bg = this.add.rectangle(x, menuY, w, h, 0x1a0035, 0.98)
+      .setStrokeStyle(2, 0x445566).setDepth(96);
+    const container = this.add.container(0, 0).setDepth(96);
+    container.add([backdrop, bg]);
+    let row = 0;
+    if (rewindAvail) {
+      const rewindBtn = this.add.rectangle(x, menuY - h / 2 + pad + rowH / 2, w - pad * 2, rowH - 4, 0x0055aa, 0.6)
+        .setStrokeStyle(1, 0x00e5ff).setDepth(97).setInteractive({ useHandCursor: true });
+      const rewindLabel = this.add.text(x, menuY - h / 2 + pad + rowH / 2, 'Rewind', {
+        fontFamily: 'monospace', fontSize: '12px', color: '#00e5ff',
+      }).setOrigin(0.5).setDepth(98);
+      container.add([rewindBtn, rewindLabel]);
+      rewindBtn.on('pointerdown', () => {
+        this.registry.set('requestRewind', true);
+        this._hideAbilityMenu();
+      });
+      rewindBtn.on('pointerover', () => rewindBtn.setStrokeStyle(1, 0x88ddff));
+      rewindBtn.on('pointerout', () => rewindBtn.setStrokeStyle(1, 0x00e5ff));
+      row += rowH;
+    }
+    if (splitReady) {
+      const splitBtn = this.add.rectangle(x, menuY - h / 2 + pad + row + rowH / 2, w - pad * 2, rowH - 4, 0x004422, 0.6)
+        .setStrokeStyle(1, 0x39ff14).setDepth(97).setInteractive({ useHandCursor: true });
+      const splitLabel = this.add.text(x, menuY - h / 2 + pad + row + rowH / 2, 'Split', {
+        fontFamily: 'monospace', fontSize: '12px', color: '#39ff14',
+      }).setOrigin(0.5).setDepth(98);
+      container.add([splitBtn, splitLabel]);
+      splitBtn.on('pointerdown', () => {
+        this.registry.set('requestSplit', true);
+        this._hideAbilityMenu();
+      });
+      splitBtn.on('pointerover', () => splitBtn.setStrokeStyle(1, 0x88ff88));
+      splitBtn.on('pointerout', () => splitBtn.setStrokeStyle(1, 0x39ff14));
+    }
+    backdrop.on('pointerdown', () => this._hideAbilityMenu());
+    this._abilityMenuContainer = container;
+  }
+
+  _hideAbilityMenu() {
+    this.registry.remove('abilityMenuOpen');
+    if (this._abilityMenuContainer) {
+      this._abilityMenuContainer.destroy();
+      this._abilityMenuContainer = null;
+    }
   }
 
   // ─────────────────────────────────────────────────────────
@@ -379,6 +479,27 @@ export default class UIScene extends Phaser.Scene {
       this._halluciOverlay.setFillStyle(0, 0);
       this._halluciText.setAlpha(0);
     }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  //  Mute icon (clickable)
+  // ─────────────────────────────────────────────────────────
+  _makeMuteIcon(x, y, size, symbol, onTap) {
+    const container = this.add.container(x, y).setDepth(85);
+    const bg = this.add.rectangle(0, 0, size, size, 0x1a0035, 0.95)
+      .setStrokeStyle(1, 0x445566);
+    const label = this.add.text(0, 0, symbol, {
+      fontFamily: 'monospace',
+      fontSize: symbol === '♪' ? '18px' : '14px',
+      color: '#aaccff',
+    }).setOrigin(0.5);
+    container.add([bg, label]);
+    container.setSize(size, size);
+    container.setInteractive({ useHandCursor: true });
+    container.on('pointerdown', onTap);
+    container.on('pointerover', () => bg.setStrokeStyle(1, 0x00e5ff));
+    container.on('pointerout', () => bg.setStrokeStyle(1, 0x445566));
+    return container;
   }
 
   // ─────────────────────────────────────────────────────────

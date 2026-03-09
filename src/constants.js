@@ -170,7 +170,7 @@ export const ENEMY_TYPES = {
     isBoss: true,
   },
   SHOOTER_ADD: {
-    key: 'SHOOTER_ADD', hp: 45, score: 100, shieldDmg: 10,
+    key: 'SHOOTER_ADD', hp: 1, score: 100, shieldDmg: 10,
     splitScore: SPLIT_PER_KILL, textureKey: 'enemy-shooter-add',
     label: 'DAEMON', vibeLabel: 'MALICIOUS VIBE',
     shootsBack: true, burstSize: 1, // Fires back at the fortress each turn

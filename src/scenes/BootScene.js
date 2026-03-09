@@ -1,4 +1,5 @@
 import { C } from '../constants.js';
+import { getMusicSystem } from '../audio/MusicSystem.js';
 
 /**
  * BootScene — creates all game textures programmatically.
@@ -134,6 +135,7 @@ void main() {
     this._makeEnemyAngelBoss();
     this._makeEnemyShooterAdd();
     this._makeProjectile();
+    getMusicSystem().init();
     this.scene.start('MenuScene');
   }
 

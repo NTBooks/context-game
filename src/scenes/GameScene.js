@@ -28,6 +28,15 @@ import {
   showPerfectBanner, showDamageNumber, showWaveClear,
   showGlancingBlow, showOverkillText,
 } from '../effects/ScreenFX.js';
+import {
+  sfxFire, sfxPerfect, sfxHit, sfxKill, sfxSuperKill,
+  sfxShieldBlock, sfxGlancing, sfxOverkill, sfxOverflow,
+  sfxRewind, sfxSplit, sfxPowerup, sfxPowerupMiss,
+  sfxFortressHit, sfxEnemyShot, sfxWaveClear as sfxWaveClearSnd,
+  sfxGameOver, sfxBugReport, sfxChargeTick,
+  toggleMute, isMuted,
+} from '../effects/SoundFX.js';
+import { getMusicSystem } from '../audio/MusicSystem.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
@@ -84,12 +93,25 @@ export default class GameScene extends Phaser.Scene {
       r:     Phaser.Input.Keyboard.KeyCodes.R,
       q:     Phaser.Input.Keyboard.KeyCodes.Q,
       enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
+      m:     Phaser.Input.Keyboard.KeyCodes.M,
     });
+
+    this._lastChargeTick = 0;
 
     this.idleTimer = 0;
     this.isIdleAnimating = false;
-    this.input.on('pointerdown', () => this._resetIdleTimer());
+    this._mouseLaneLocked = false;
+    this._chargeStartedByMouse = false;
     this.input.keyboard.on('keydown', () => this._resetIdleTimer());
+
+    // Mouse accessibility: move = change lane, click = charge, release = fire; right-click = ability menu
+    this.input.on('pointermove', (pointer) => this._onPointerMove(pointer));
+    this.input.on('pointerdown', (pointer) => this._onPointerDown(pointer));
+    this.input.on('pointerup', (pointer) => this._onPointerUp(pointer));
+    this._boundMouseUp = () => this._onDocumentMouseUp();
+    document.addEventListener('mouseup', this._boundMouseUp);
+    this.events.once('shutdown', () => document.removeEventListener('mouseup', this._boundMouseUp));
+    this.game.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // ── Depth ────────────────────────────────────────────────
     this.fortress.setDepth(5);
@@ -105,6 +127,7 @@ export default class GameScene extends Phaser.Scene {
     this.registry.set('upgrades', { damage: 0, cost: 0, rewind: 0, charge: 0, splits: 0, heal: 0 });
 
     // ── Intro + Start Wave ───────────────────────────────────
+    getMusicSystem().play('game');
     this.tank.introAnimation(() => {
       this.time.delayedCall(300, () => this._startNextWave());
     });
@@ -205,6 +228,26 @@ export default class GameScene extends Phaser.Scene {
     const { JustDown, JustUp } = Phaser.Input.Keyboard;
     const k = this.keys;
 
+    // Mouse/UI-triggered ability requests (from UIScene click or context menu)
+    if (this.registry.get('requestRewind')) {
+      this.registry.remove('requestRewind');
+      const used = this.ability.useRewind(this.ctx);
+      if (used) {
+        sfxRewind();
+        flash(this, 0x0055ff, 0.2, 300);
+        this._generatePerfectZone();
+        this.isCharging = false;
+        this.chargeLevel = 0;
+      }
+    }
+    if (this.registry.get('requestSplit')) {
+      this.registry.remove('requestSplit');
+      if (this.ability.splitReady && !this.splitMode) {
+        this._activateSplit();
+        return;
+      }
+    }
+
     // Lane selection
     if (JustDown(k.up)   || JustDown(k.w))   this.tank.moveLane(-1);
     if (JustDown(k.down) || JustDown(k.s))   this.tank.moveLane(1);
@@ -213,6 +256,7 @@ export default class GameScene extends Phaser.Scene {
     if (JustDown(k.r)) {
       const used = this.ability.useRewind(this.ctx);
       if (used) {
+        sfxRewind();
         flash(this, 0x0055ff, 0.2, 300);
         this._generatePerfectZone();
         this.isCharging  = false;
@@ -238,14 +282,75 @@ export default class GameScene extends Phaser.Scene {
       this.isCharging = true;
       this.chargeStart = time;
     }
+    // Mute toggle
+    if (JustDown(k.m)) {
+      toggleMute();
+      getMusicSystem().toggleMute();
+      this.registry.set('sfxMuted', isMuted());
+    }
+
     if (this.isCharging) {
       this.chargeLevel = Math.min(100, ((time - this.chargeStart) / CHARGE_DURATION) * 100);
+      if (time - this._lastChargeTick > 80) {
+        sfxChargeTick(this.chargeLevel);
+        this._lastChargeTick = time;
+      }
       if (JustUp(k.space)) {
         this._fireSingleShot();
         this.isCharging  = false;
         this.chargeLevel = 0;
       }
     }
+  }
+
+  _laneIndexFromY(worldY) {
+    if (worldY < 210) return 0;
+    if (worldY < 330) return 1;
+    return 2;
+  }
+
+  _onPointerMove(pointer) {
+    if (this.state !== STATE.PLAYER_TURN || this._mouseLaneLocked || this.isCharging) return;
+    const lane = this._laneIndexFromY(pointer.y);
+    if (lane !== this.tank.currentLane) this.tank.setLane(lane);
+  }
+
+  _onPointerDown(pointer) {
+    this._resetIdleTimer();
+    if (pointer.button === 2) {
+      this.registry.set('abilityMenu', { x: pointer.x, y: pointer.y });
+      return;
+    }
+    if (this.registry.get('abilityMenuOpen')) return;
+    // Don't start charge when clicking the rewind/split UI area (handled by UIScene)
+    const abilityLeft = 180 + 340;
+    const abilityRight = abilityLeft + 98;
+    const abilityTop = GAME_HEIGHT - 53;
+    const abilityBottom = GAME_HEIGHT - 17;
+    if (pointer.x >= abilityLeft && pointer.x <= abilityRight && pointer.y >= abilityTop && pointer.y <= abilityBottom) return;
+    if (pointer.button !== 0 || this.state !== STATE.PLAYER_TURN || this.isCharging) return;
+    this._mouseLaneLocked = true;
+    this._chargeStartedByMouse = true;
+    this.isCharging = true;
+    this.chargeStart = this.game.getTime();
+  }
+
+  _onPointerUp(pointer) {
+    if (pointer.button !== 0 || !this.isCharging || !this._chargeStartedByMouse) return;
+    this._fireSingleShot();
+    this.isCharging = false;
+    this.chargeLevel = 0;
+    this._mouseLaneLocked = false;
+    this._chargeStartedByMouse = false;
+  }
+
+  _onDocumentMouseUp() {
+    if (!this.scene.isActive() || !this.isCharging || !this._chargeStartedByMouse) return;
+    this._fireSingleShot();
+    this.isCharging = false;
+    this.chargeLevel = 0;
+    this._mouseLaneLocked = false;
+    this._chargeStartedByMouse = false;
   }
 
   // ─────────────────────────────────────────────────────────
@@ -264,8 +369,10 @@ export default class GameScene extends Phaser.Scene {
     const color     = this.ctx.color;
     const lane      = this.tank.currentLane;
 
+    sfxFire();
     spawnMuzzleFlash(this, this.tank.barrelTipX, this.tank.barrelTipY, color);
     if (isPerfect && !this.ragActive) {
+      sfxPerfect();
       spawnPerfectBurst(this, this.tank.barrelTipX + 20, LANES[lane]);
       showPerfectBanner(this, this.tank.barrelTipX + 40, LANES[lane]);
       this.cameras.main.flash(150, 220, 200, 0, false);
@@ -338,6 +445,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.splitMode      = true;
     this.splitShotsLeft = SPLIT_SHOTS;
+    sfxSplit();
     flash(this, C.NEON_CYAN, 0.15, 200);
     this._floatText(TANK_X + 80, GAME_HEIGHT - 60, `SPLIT ACTIVE — ${this.splitShotsLeft} SHOTS`, '#00e5ff');
   }
@@ -386,24 +494,30 @@ export default class GameScene extends Phaser.Scene {
           // Armor: under-charged shots glance off heavy enemies
           const cfg = target.cfg;
           const isGlancing = cfg.armorThreshold && charge < cfg.armorThreshold;
-          const actualDmg  = isGlancing ? Math.max(1, Math.floor(dmg * cfg.armorMult)) : dmg;
+          let actualDmg  = isGlancing ? Math.max(1, Math.floor(dmg * cfg.armorMult)) : dmg;
+          // Perfect prompt always breaks shields
+          if (isPerfect && cfg.shieldBreak) actualDmg = Math.max(actualDmg, cfg.shieldBreak);
 
           const preHitHp = target.hp;
           const { killed, bounced } = target.hit(actualDmg);
           if (bounced) {
+            sfxShieldBlock();
             spawnBounce(this, target.x, target.y);
             this._floatText(target.x, target.y - 22, 'SHIELD BLOCKED!', '#88ddff');
           } else if (isGlancing) {
+            sfxGlancing();
             showGlancingBlow(this, target.x, target.y - 18, actualDmg);
             spawnExplosion(this, target.x, target.y, C.STEEL_GREY, 3);
           } else {
             showDamageNumber(this, target.x, target.y - 18, actualDmg, isPerfect);
             if (killed) {
+              sfxSuperKill();
               spawnSuperFXDeath(this, target);
               this.score += cfg.score;
               const ready = this.ability.addSplitCharge(cfg.splitScore);
               if (ready) this._floatText(TANK_X + 60, GAME_HEIGHT - 80, 'VIBE SPLIT READY! [Q]', '#00e5ff');
               if (actualDmg > preHitHp * OVERKILL_RATIO) {
+                sfxOverkill();
                 this.ctx.addFlat(OVERKILL_CTX_PENALTY);
                 showOverkillText(this, target.x, target.y);
               }
@@ -413,6 +527,7 @@ export default class GameScene extends Phaser.Scene {
                  this._dropPowerup(target.lane, target.steps);
               }
             } else {
+              sfxHit();
               spawnExplosion(this, target.x, target.y, C.NEON_CYAN, 4);
             }
           }
@@ -435,17 +550,22 @@ export default class GameScene extends Phaser.Scene {
       onComplete: () => {
         beam.destroy();
         if (target.alive) {
-          const { killed, bounced } = target.hit(dmg);
+          let applyDmg = dmg;
+          if (isPerfect && target.cfg.shieldBreak) applyDmg = Math.max(applyDmg, target.cfg.shieldBreak);
+          const { killed, bounced } = target.hit(applyDmg);
           if (bounced) {
+            sfxShieldBlock();
             spawnBounce(this, target.x, target.y);
             this._floatText(target.x, target.y - 22, 'SHIELD BLOCKED!', '#88ddff');
           } else {
-            showDamageNumber(this, target.x, target.y - 18, dmg, isPerfect);
+            showDamageNumber(this, target.x, target.y - 18, applyDmg, isPerfect);
             if (killed) {
+              sfxKill();
               spawnSuperFXDeath(this, target);
               this.score += target.cfg.score;
               this.ability.addSplitCharge(target.cfg.splitScore);
             } else {
+              sfxHit();
               spawnExplosion(this, target.x, target.y, C.NEON_CYAN, 4);
             }
           }
@@ -495,6 +615,7 @@ export default class GameScene extends Phaser.Scene {
           const laneY = LANES[e.lane];
           const destroyed = this.fortress.takeDamage(e.cfg.shieldDmg);
           this.fortress.addSmokeHole(this);
+          sfxFortressHit();
           spawnFortressImpact(this, this.fortress.x, laneY);
           showDamageNumber(this, this.fortress.x, laneY - 20, e.cfg.shieldDmg, false);
           shake(this, 8, 300);
@@ -508,11 +629,13 @@ export default class GameScene extends Phaser.Scene {
 
       // Check powerup collections
       for (const p of this.powerups) {
-        if (p.alive && p.steps <= 1) { // Same threshold as killing the codebase but applying to powerups
+        if (p.alive && p.steps <= 1) {
           if (p.lane === this.tank.currentLane) {
+            sfxPowerup();
             this._collectPowerup(p);
           } else {
-            p.dissolve(); // Player wasn't there to catch it, poof.
+            sfxPowerupMiss();
+            p.dissolve();
           }
         }
       }
@@ -643,12 +766,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _shootFromEnemy(enemy, callback) {
-    // Enemy projectile flies to code base
     const startX = enemy.x - 24;
     const startY = enemy.y;
     const bullet = this.add.rectangle(startX, startY, 20, 6, C.DANGER_RED).setDepth(12);
     
-    // Tiny puff from enemy
+    sfxEnemyShot();
     spawnMuzzleFlash(this, startX, startY, C.DANGER_RED);
 
     this.tweens.add({
@@ -660,6 +782,7 @@ export default class GameScene extends Phaser.Scene {
         bullet.destroy();
         if (this.state !== STATE.GAME_OVER) {
           const broken = this.fortress.takeDamage(enemy.cfg.burstSize || 1);
+          sfxFortressHit();
           spawnFortressImpact(this, this.fortress.x, startY);
           showDamageNumber(this, this.fortress.x, startY - 20, enemy.cfg.burstSize || 1, false);
           shake(this, 5, 200);
@@ -676,6 +799,7 @@ export default class GameScene extends Phaser.Scene {
   //  Context overflow → compaction
   // ─────────────────────────────────────────────────────────
   _onOverflow() {
+    sfxOverflow();
     flash(this, C.DANGER_RED, 0.7, 600);
     shake(this, 22, 700);
     this.time.delayedCall(150, () => shake(this, 14, 500)); // second tremor
@@ -700,6 +824,7 @@ export default class GameScene extends Phaser.Scene {
   // ─────────────────────────────────────────────────────────
   _startNextWave() {
     this.waveNum++;
+    getMusicSystem().play(this.waveNum % 5 === 0 ? 'boss' : 'game');
     this.turnNum = 0;
     this.ability.resetWave();
     this.ctx.resetForSession();
@@ -737,6 +862,8 @@ export default class GameScene extends Phaser.Scene {
   _onWaveCleared() {
     this.state = STATE.WAVE_CLEAR;
     this.fortress.shield = Math.min(100, this.fortress.shield + 10);
+    getMusicSystem().play('shop');
+    sfxWaveClearSnd();
     showWaveClear(this, this.waveNum, () => {
       this.scene.pause();
       this.scene.launch('ShopScene');
@@ -770,6 +897,8 @@ export default class GameScene extends Phaser.Scene {
   // ─────────────────────────────────────────────────────────
   _triggerGameOver() {
     this.state = STATE.GAME_OVER;
+    getMusicSystem().stop();
+    sfxGameOver();
     let hi = this.score;
     try {
       hi = Math.max(this.score, parseInt(localStorage.getItem('hiScore') || '0'));
@@ -811,10 +940,14 @@ export default class GameScene extends Phaser.Scene {
       .on('pointerdown', () => window.open('https://dsoul.org', '_blank'));
     dsGroup.add([dsLogo, dsText]);
 
+    const goToMenu = () => {
+      this.scene.stop('UIScene');
+      this.scene.start('MenuScene');
+    };
     this.time.delayedCall(800, () => {
-      this.input.keyboard.once('keydown-SPACE', () => {
-        this.scene.stop('UIScene');
-        this.scene.start('MenuScene');
+      this.input.keyboard.once('keydown-SPACE', goToMenu);
+      this.input.once('pointerdown', (pointer) => {
+        if (pointer.button === 0) goToMenu();
       });
     });
   }
@@ -825,6 +958,7 @@ export default class GameScene extends Phaser.Scene {
   _triggerBugReport(err) {
     if (this.state === STATE.GAME_OVER) return;
     this.state = STATE.GAME_OVER;
+    sfxBugReport();
 
     let hi = this.score;
     try {
@@ -865,10 +999,14 @@ export default class GameScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '14px', color: '#6b2fa0',
     }).setOrigin(0.5).setDepth(71);
 
+    const goToMenuFromBug = () => {
+      this.scene.stop('UIScene');
+      this.scene.start('MenuScene');
+    };
     this.time.delayedCall(500, () => {
-      this.input.keyboard.once('keydown-SPACE', () => {
-        this.scene.stop('UIScene');
-        this.scene.start('MenuScene');
+      this.input.keyboard.once('keydown-SPACE', goToMenuFromBug);
+      this.input.once('pointerdown', (pointer) => {
+        if (pointer.button === 0) goToMenuFromBug();
       });
     });
   }
