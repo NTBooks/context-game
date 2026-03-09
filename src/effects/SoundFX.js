@@ -26,6 +26,20 @@ export function toggleMute() {
   return _muted;
 }
 
+export function suspendSfx() {
+  if (!_ctx) return;
+  if (_ctx.state === 'running') {
+    _ctx.suspend().catch(() => {});
+  }
+}
+
+export function resumeSfx() {
+  if (!_ctx) return;
+  if (_ctx.state === 'suspended') {
+    _ctx.resume().catch(() => {});
+  }
+}
+
 function tone(freq, duration, type = 'square', volume = 1) {
   const ctx = ensureResumed();
   const osc = ctx.createOscillator();

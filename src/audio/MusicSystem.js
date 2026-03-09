@@ -227,6 +227,26 @@ function createMusicSystem() {
     }
   }
 
+  function suspend() {
+    stopScheduler();
+    if (!audioContext) return;
+    if (audioContext.state === 'running') {
+      audioContext.suspend().catch(() => {});
+    }
+  }
+
+  function resume() {
+    if (!audioContext) return;
+    const startIfNeeded = () => {
+      if (currentTrackKey) startScheduler();
+    };
+    if (audioContext.state === 'suspended') {
+      audioContext.resume().then(startIfNeeded).catch(() => {});
+    } else {
+      startIfNeeded();
+    }
+  }
+
   function play(trackKey) {
     if (!TRACKS[trackKey]) return;
     currentTrackKey = trackKey;
@@ -263,7 +283,7 @@ function createMusicSystem() {
     getContext();
   }
 
-  return { play, stop, init, toggleMute, isMuted, resumeContext };
+  return { play, stop, init, toggleMute, isMuted, resumeContext, suspend, resume };
 }
 
 // ─── Track data: pattern arrays, length = steps per loop ─────────────────

@@ -4,6 +4,8 @@ import MenuScene   from './scenes/MenuScene.js';
 import GameScene   from './scenes/GameScene.js';
 import UIScene     from './scenes/UIScene.js';
 import ShopScene   from './scenes/ShopScene.js';
+import { getMusicSystem } from './audio/MusicSystem.js';
+import { suspendSfx, resumeSfx } from './effects/SoundFX.js';
 
 const config = {
   type: Phaser.AUTO,
@@ -21,6 +23,49 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
+
+let _hidden = document.visibilityState === 'hidden';
+let _pausedSceneKeys = [];
+
+function pauseForHiddenTab() {
+  if (_hidden) return;
+  _hidden = true;
+  _pausedSceneKeys = game.scene.getScenes(true).map(s => s.scene.key);
+  _pausedSceneKeys.forEach((key) => {
+    game.scene.pause(key);
+  });
+  try {
+    getMusicSystem().suspend();
+  } catch (_) {}
+  try {
+    suspendSfx();
+  } catch (_) {}
+}
+
+function resumeFromHiddenTab() {
+  if (!_hidden) return;
+  _hidden = false;
+  _pausedSceneKeys.forEach((key) => {
+    if (game.scene.isPaused(key)) {
+      game.scene.resume(key);
+    }
+  });
+  _pausedSceneKeys = [];
+  try {
+    getMusicSystem().resume();
+  } catch (_) {}
+  try {
+    resumeSfx();
+  } catch (_) {}
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    pauseForHiddenTab();
+  } else {
+    resumeFromHiddenTab();
+  }
+});
 
 let _recovering = false;
 
