@@ -862,10 +862,15 @@ export default class GameScene extends Phaser.Scene {
       this.spawnEnemy(evt.type, evt.lane);
     });
 
-    if (this.waveNum > 1) {
+    const cam = this.cameras.main;
+    // If we're currently zoomed in (e.g., coming out of the shop), always
+    // tween back to normal zoom before giving control back to the player.
+    // This also handles the loop after beating the boss where waveNum resets
+    // to 1 but we still want the zoom-out animation.
+    if (cam && cam.zoom !== 1) {
       this.state = STATE.ANIMATING;
       this.tweens.add({
-        targets: this.cameras.main,
+        targets: cam,
         zoom: 1,
         duration: 800,
         ease: 'Stepped',
