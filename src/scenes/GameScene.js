@@ -33,7 +33,8 @@ export default class GameScene extends Phaser.Scene {
 
   create() {
     // ── Background ──────────────────────────────────────────
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'bg-base').setDepth(0);
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'bg-base').setDepth(-1);
+    this.add.shader('vapor_fog', GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT).setDepth(0);
     this.bgClouds = this.add.tileSprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 'bg-clouds').setDepth(0);
     this._drawGrid();
 
@@ -114,7 +115,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.state === STATE.GAME_OVER) return;
 
     // Parallax clouds
-    this.bgClouds.tilePositionX += delta * 0.05;
+    this._bgCloudOffset = (this._bgCloudOffset || 0) + delta * 0.05;
+    this.bgClouds.tilePositionX = Math.floor(this._bgCloudOffset / 4) * 4;
 
     this.tank.update(time, delta);
     if (this.ghostTank) this.ghostTank.update(time, delta);

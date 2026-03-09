@@ -24,21 +24,23 @@ export function spawnExplosion(scene, x, y, color = C.WARNING_ORANGE, count = 10
       scaleX: 0.1,
       scaleY: 0.1,
       duration,
-      ease: 'Power2',
+      ease: 'Stepped',
+      easeParams: [8],
       onComplete: () => particle.destroy(),
     });
   }
 
-  // Bright flash ring
-  const ring = scene.add.circle(x, y, 4, color, 0.9);
+  // SNES blocky flash diamond
+  const ring = scene.add.rectangle(x, y, 10, 10).setStrokeStyle(3, color, 0.9).setAngle(45);
   ring.setDepth(19);
   scene.tweens.add({
     targets: ring,
     scaleX: 5,
     scaleY: 5,
     alpha: 0,
-    duration: 200,
-    ease: 'Power2',
+    duration: 250,
+    ease: 'Stepped',
+    easeParams: [5],
     onComplete: () => ring.destroy(),
   });
 }
@@ -84,22 +86,21 @@ export function spawnPerfectBurst(scene, x, y) {
 
 /** Shot bounced off shield — ricochet beams + sparks fly leftward */
 export function spawnBounce(scene, x, y) {
-  // Shield impact ring
-  const ring = scene.add.circle(x, y, 26, 0x44aaff, 0);
+  // Shield impact blocky ring
+  const ring = scene.add.rectangle(x, y, 20, 20).setStrokeStyle(3, 0x88ddff, 1).setAngle(45);
   ring.setDepth(22);
-  ring.setStrokeStyle(3, 0x88ddff, 1);
   scene.tweens.add({
-    targets: ring, scaleX: 2.2, scaleY: 2.2, alpha: 0,
-    duration: 280, ease: 'Power2',
+    targets: ring, scaleX: 3.2, scaleY: 3.2, alpha: 0,
+    duration: 280, ease: 'Stepped', easeParams: [6],
     onComplete: () => ring.destroy(),
   });
 
-  // Bright center flash
-  const flash = scene.add.circle(x, y, 8, 0xaaddff, 0.95);
+  // Bright center block flash
+  const flash = scene.add.rectangle(x, y, 12, 12, 0xaaddff, 0.95).setAngle(45);
   flash.setDepth(23);
   scene.tweens.add({
     targets: flash, scaleX: 3, scaleY: 3, alpha: 0,
-    duration: 180, ease: 'Power3',
+    duration: 180, ease: 'Stepped', easeParams: [4],
     onComplete: () => flash.destroy(),
   });
 
@@ -138,6 +139,7 @@ export function spawnBounce(scene, x, y) {
       y: y + Math.sin(angle) * dist,
       alpha: 0, scaleX: 0.2, scaleY: 0.2,
       duration: Phaser.Math.Between(200, 420),
+      ease: 'Stepped', easeParams: [8],
       onComplete: () => p.destroy(),
     });
   }
@@ -197,26 +199,26 @@ export function spawnSuperFXDeath(scene, enemy) {
       scaleX:   0.1,
       scaleY:   0.1,
       duration: Phaser.Math.Between(380, 680),
-      ease:     'Power2',
+      ease:     'Stepped', easeParams: [6],
       onComplete: () => p.destroy(),
     });
   }
 
-  // Big white flash ring
-  const ring1 = scene.add.circle(ex, ey, 8, 0xffffff, 1);
+  // Big white blocky flash ring
+  const ring1 = scene.add.rectangle(ex, ey, 16, 16).setStrokeStyle(4, 0xffffff, 1).setAngle(45);
   ring1.setDepth(26);
   scene.tweens.add({
     targets: ring1, scaleX: 11, scaleY: 11, alpha: 0,
-    duration: 280, ease: 'Power3',
+    duration: 350, ease: 'Stepped', easeParams: [6],
     onComplete: () => ring1.destroy(),
   });
 
-  // Secondary orange ring
-  const ring2 = scene.add.circle(ex, ey, 6, C.WARNING_ORANGE, 0.85);
+  // Secondary orange diamond
+  const ring2 = scene.add.rectangle(ex, ey, 14, 14).setStrokeStyle(4, C.WARNING_ORANGE, 0.85).setAngle(45);
   ring2.setDepth(25);
   scene.tweens.add({
-    targets: ring2, scaleX: 7, scaleY: 7, alpha: 0,
-    duration: 480, ease: 'Power2',
+    targets: ring2, scaleX: 8, scaleY: 8, alpha: 0,
+    duration: 550, ease: 'Stepped', easeParams: [8],
     onComplete: () => ring2.destroy(),
   });
 }
@@ -245,11 +247,11 @@ export function spawnFortressImpact(scene, x, y) {
   }
 
   // Bright impact flash
-  const fl = scene.add.rectangle(x, y, 32, 32, 0xffffff, 0.95);
+  const fl = scene.add.rectangle(x, y, 32, 32, 0xffffff, 0.95).setAngle(45);
   fl.setDepth(22);
   scene.tweens.add({
     targets: fl, scaleX: 4, scaleY: 4, alpha: 0,
-    duration: 160,
+    duration: 160, ease: 'Stepped', easeParams: [4],
     onComplete: () => fl.destroy(),
   });
 }

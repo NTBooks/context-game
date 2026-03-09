@@ -6,6 +6,7 @@ export default class MenuScene extends Phaser.Scene {
   create() {
     // Background
     this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'bg-base');
+    this.add.shader('vapor_fog', GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT);
     this.bgClouds = this.add.tileSprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 'bg-clouds');
 
     // Title
@@ -91,7 +92,8 @@ export default class MenuScene extends Phaser.Scene {
 
   update(time, delta) {
     if (this.bgClouds) {
-      this.bgClouds.tilePositionX += delta * 0.05;
+      this._bgCloudOffset = (this._bgCloudOffset || 0) + delta * 0.05;
+      this.bgClouds.tilePositionX = Math.floor(this._bgCloudOffset / 4) * 4;
     }
   }
 }

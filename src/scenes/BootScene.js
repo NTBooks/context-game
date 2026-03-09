@@ -17,6 +17,100 @@ export default class BootScene extends Phaser.Scene {
   }
 
   create() {
+    const vaporFogFrag = `
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+uniform float time;
+uniform vec2 resolution;
+
+float hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+        mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+        mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+        f.y
+    );
+}
+float fbm(vec2 p) {
+    float f = 0.0;
+    f += 0.5000 * noise(p); p *= 2.02;
+    f += 0.2500 * noise(p); p *= 2.03;
+    f += 0.1250 * noise(p); p *= 2.01;
+    f += 0.0625 * noise(p);
+    return f / 0.9375;
+}
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / resolution.xy;
+    
+    // SNES pixelation chunking for that retro vibe (matching 4x4 chunks)
+    vec2 pixelated = floor(uv * vec2(240.0, 135.0)) / vec2(240.0, 135.0);
+    
+    // Slow drifting smoke layer 1
+    vec2 p1 = pixelated * 3.0 + vec2(time * 0.03, time * 0.02);
+    float n1 = fbm(p1);
+    
+    // Slow drifting smoke layer 2
+    vec2 p2 = pixelated * 5.0 - vec2(time * 0.04, time * 0.01);
+    float n2 = fbm(p2);
+    
+    // Smooth smoke values, keeping them somewhat sparse
+    n1 = smoothstep(0.4, 0.8, n1) * 0.6;
+    n2 = smoothstep(0.4, 0.9, n2) * 0.4;
+    
+    // Spotlights (large moving blobs)
+    // Cyan spotlight moving across
+    vec2 spot1Center = vec2(0.5 + 0.4 * sin(time * 0.3), 0.5 + 0.3 * cos(time * 0.2));
+    float spot1 = smoothstep(0.5, 0.0, distance(pixelated, spot1Center));
+    
+    // Magenta spotlight
+    vec2 spot2Center = vec2(0.5 + 0.4 * cos(time * 0.25), 0.5 + 0.3 * sin(time * 0.35 + 2.0));
+    float spot2 = smoothstep(0.6, 0.0, distance(pixelated, spot2Center));
+    
+    vec3 colPink = vec3(1.0, 0.1, 0.6); // Magenta/Pink
+    vec3 colCyan = vec3(0.0, 0.8, 1.0); // Cyan
+    vec3 colDeep = vec3(0.04, 0.0, 0.10); // Very dark purple background
+    
+    vec3 finalCol = colDeep;
+    
+    // Add smoke (tinted faintly by spotlights or just white/grey)
+    finalCol += vec3(0.1, 0.1, 0.1) * n1;
+    finalCol += vec3(0.05, 0.05, 0.1) * n2;
+    
+    // Add spotlights, multiplied by smoke and a bit of a base to cast "light"
+    vec3 lightContrib = colCyan * spot1 * 0.6 + colPink * spot2 * 0.6;
+    
+    // Spotlights illuminate the smoke strongly, and the background faintly
+    finalCol += lightContrib * (n1 + n2 + 0.2);
+    
+    // SNES scanline overlay
+    if (mod(gl_FragCoord.y, 4.0) < 2.0) {
+        finalCol *= 0.8;
+    }
+            
+    // Output mostly transparent (if Phaser supports it) or just dark
+    // With alpha tracking the luminous parts so the HTML body shows through if possible
+    float alpha = clamp(max(n1 + n2, max(spot1, spot2)) + 0.2, 0.0, 1.0);
+    gl_FragColor = vec4(finalCol, alpha);
+}
+    `;
+    
+    if (Phaser.Display && Phaser.Display.BaseShader) {
+       this.cache.shader.add('vapor_fog', new Phaser.Display.BaseShader('vapor_fog', vaporFogFrag));
+    } else {
+       // fallback for some phaser versions
+       this.cache.shader.add('vapor_fog', { frag: vaporFogFrag });
+    }
+
     this._makeBgBase();
     this._makeBgClouds();
     this._makeTankBody();
@@ -68,15 +162,30 @@ export default class BootScene extends Phaser.Scene {
 
   _makeBgClouds() {
     const g = this._gfx(960, 540);
-    // Nebula blobs
+    // Pixelated blocky clouds
     const nebColors = [0x3d1a6b, 0x6b2fa0, 0x1a0035];
-    for (let i = 0; i < 6; i++) {
-      const nx = Phaser.Math.Between(100, 860);
-      const ny = Phaser.Math.Between(50, 490);
-      const nw = Phaser.Math.Between(80, 180);
-      const nh = Phaser.Math.Between(40, 90);
-      g.fillStyle(nebColors[i % nebColors.length], 0.18);
-      g.fillEllipse(nx, ny, nw, nh);
+    for (let i = 0; i < 15; i++) {
+      let nx = Phaser.Math.Between(50, 910);
+      let ny = Phaser.Math.Between(30, 510);
+      nx = nx - (nx % 4);
+      ny = ny - (ny % 4);
+      let baseW = Phaser.Math.Between(60, 160);
+      let baseH = Phaser.Math.Between(40, 90);
+      baseW -= (baseW % 4);
+      baseH -= (baseH % 4);
+      g.fillStyle(nebColors[i % nebColors.length], 0.25);
+      
+      // Draw blocky pixelated shape
+      for (let y = 0; y < baseH; y += 4) {
+        for (let x = 0; x < baseW; x += 4) {
+          const dx = (x - baseW/2) / (baseW/2);
+          const dy = (y - baseH/2) / (baseH/2);
+          // random pixelated edge falloff
+          if (dx*dx + dy*dy <= 1.0 + Phaser.Math.FloatBetween(-0.3, 0.2)) {
+            g.fillRect(nx + x, ny + y, 4, 4);
+          }
+        }
+      }
     }
     g.generateTexture('bg-clouds', 960, 540);
     g.destroy();
