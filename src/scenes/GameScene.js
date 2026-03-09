@@ -605,6 +605,7 @@ export default class GameScene extends Phaser.Scene {
   //  End turn → enemy advance phase
   // ─────────────────────────────────────────────────────────
   _endTurn() {
+    if (this.state === STATE.WAVE_CLEAR) return;
     this.isCharging = false;
     this.chargeLevel = 0;
     this.state = STATE.ENEMY_ADVANCE;
@@ -730,6 +731,10 @@ export default class GameScene extends Phaser.Scene {
 
     const onAgentComplete = () => {
       this._agentFiring = false;
+      if (this._overflowEndTurnTimer) {
+        this._overflowEndTurnTimer.remove();
+        this._overflowEndTurnTimer = null;
+      }
       this._cleanupDead();
       const allSpawned = this.waves.allSpawnsDone(this.waveNum);
       const anyAlive = this.enemies.some(e => e.alive);
@@ -840,7 +845,8 @@ export default class GameScene extends Phaser.Scene {
       if (p.alive) p.forceAdvance(COMPACTION_STEPS);
     }
 
-    this.time.delayedCall(600, () => {
+    this._overflowEndTurnTimer = this.time.delayedCall(600, () => {
+      this._overflowEndTurnTimer = null;
       if (!this._agentFiring) this._endTurn();
     });
   }
