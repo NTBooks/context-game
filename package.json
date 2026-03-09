@@ -1,0 +1,8 @@
+{
+  "type": "module",
+  "scripts": {
+    "gen": "node scripts/generate-image.mjs",
+    "gen-bg": "node scripts/generate-background.mjs",
+    "rm-bg": "node scripts/remove-background.mjs"
+  }
+}
