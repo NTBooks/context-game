@@ -6,10 +6,12 @@ import {
 } from '../constants.js';
 
 export class Enemy extends Phaser.GameObjects.Container {
-  constructor(scene, type, lane, steps) {
-    let cfg = ENEMY_TYPES[type];
+  constructor(scene, typeKeyOrCfg, lane, steps) {
+    let cfg = typeof typeKeyOrCfg === 'object' && typeKeyOrCfg && typeKeyOrCfg.key
+      ? typeKeyOrCfg
+      : ENEMY_TYPES[typeKeyOrCfg];
     if (!cfg) {
-      console.warn(`[Enemy] Unknown type "${type}", falling back to first available`);
+      console.warn(`[Enemy] Unknown type "${typeKeyOrCfg}", falling back to first available`);
       cfg = ENEMY_TYPES[Object.keys(ENEMY_TYPES)[0]];
     }
     const x   = ENEMY_BOUNDARY_X + steps * STEP_SIZE;

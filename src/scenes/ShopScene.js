@@ -27,11 +27,12 @@ export default class ShopScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '18px', color: '#aaccff',
     }).setOrigin(0.5);
 
-    // Pick 3 random skills
-    // Create a copy to shuffle
-    const pool = [...SKILLS];
-    Phaser.Utils.Array.Shuffle(pool);
-    const choices = pool.slice(0, 3);
+    // Pick 3 random skills (exclude +1 Ghost Ship once purchased)
+    const ups = this.registry.get('upgrades') || {};
+    const pool = SKILLS.filter(s => s.id !== 'splits' || (ups.splits || 0) < 1);
+    const shuffled = [...pool];
+    Phaser.Utils.Array.Shuffle(shuffled);
+    const choices = shuffled.slice(0, 3);
 
     choices.forEach((skill, i) => {
       const x = GAME_WIDTH/2 + (i - 1) * 260;

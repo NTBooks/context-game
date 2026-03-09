@@ -11,13 +11,13 @@ import {
   SPLIT_SHOTS, SPLIT_COST,
   C, STATE, calcDamage, ctxToColor,
 } from '../constants.js';
-import { HeatSystem }    from '../systems/HeatSystem.js';
+import { HeatSystem } from '../systems/HeatSystem.js';
 import { AbilitySystem } from '../systems/AbilitySystem.js';
-import { WaveSystem }    from '../systems/WaveSystem.js';
-import { Tank }          from '../entities/Tank.js';
-import { Enemy }         from '../entities/Enemy.js';
+import { WaveSystem } from '../systems/WaveSystem.js';
+import { Tank } from '../entities/Tank.js';
+import { Enemy } from '../entities/Enemy.js';
 import { Powerup, POWERUP_TYPES } from '../entities/Powerup.js';
-import { Fortress }      from '../entities/Fortress.js';
+import { Fortress } from '../entities/Fortress.js';
 import {
   spawnExplosion, spawnMuzzleFlash,
   spawnPerfectBurst, spawnCompactionFX, spawnBounce,
@@ -49,51 +49,52 @@ export default class GameScene extends Phaser.Scene {
     this._drawGrid();
 
     // ── Systems ─────────────────────────────────────────────
-    this.ctx      = new HeatSystem(this);   // "context window" system
-    this.ability  = new AbilitySystem(this);
-    this.waves    = new WaveSystem(this);
+    this.ctx = new HeatSystem(this);   // "context window" system
+    this.ability = new AbilitySystem(this);
+    this.waves = new WaveSystem(this);
     this.ctx.onOverheat(() => this._onOverflow());
 
     // ── Entities ────────────────────────────────────────────
-    this.fortress    = new Fortress(this);
-    this.tank        = new Tank(this, 1);
-    this.enemies     = [];
-    this.powerups    = [];
+    this.fortress = new Fortress(this);
+    this.tank = new Tank(this, 1);
+    this.enemies = [];
+    this.powerups = [];
 
     // ── Turn state ──────────────────────────────────────────
-    this.state       = STATE.ANIMATING;
-    this.turnNum     = 0;   // within current wave
-    this.waveNum     = 0;
-    this.score       = 0;
-    this.isCharging  = false;
+    this.state = STATE.ANIMATING;
+    this.turnNum = 0;   // within current wave
+    this.waveNum = 0;
+    this.loopCount = 0; // number of times boss (wave 5) has been beaten; used for enemy stat scaling
+    this.score = 0;
+    this.isCharging = false;
     this.chargeStart = 0;
     this.chargeLevel = 0;
-    
-    this.ragActive     = false;
-    this._agentFiring  = false;
+
+    this.ragActive = false;
+    this._agentFiring = false;
 
     // ── Perfect zone (dynamic — changes position & width each shot) ─
-    this.perfectMin        = PERFECT_ZONE_MIN;
-    this.perfectMax        = PERFECT_ZONE_MAX;
+    this.perfectMin = PERFECT_ZONE_MIN;
+    this.perfectMax = PERFECT_ZONE_MAX;
     this._perfectDriftPhase = 0;
     this._generatePerfectZone();
 
     // ── Split mode ───────────────────────────────────────────
-    this.splitMode      = false;
+    this.splitMode = false;
     this.splitShotsLeft = 0;
-    this.ghostTanks     = [];
+    this.ghostTanks = [];
 
     // ── Input ────────────────────────────────────────────────
     this.keys = this.input.keyboard.addKeys({
-      up:    Phaser.Input.Keyboard.KeyCodes.UP,
-      down:  Phaser.Input.Keyboard.KeyCodes.DOWN,
-      w:     Phaser.Input.Keyboard.KeyCodes.W,
-      s:     Phaser.Input.Keyboard.KeyCodes.S,
+      up: Phaser.Input.Keyboard.KeyCodes.UP,
+      down: Phaser.Input.Keyboard.KeyCodes.DOWN,
+      w: Phaser.Input.Keyboard.KeyCodes.W,
+      s: Phaser.Input.Keyboard.KeyCodes.S,
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      r:     Phaser.Input.Keyboard.KeyCodes.R,
-      q:     Phaser.Input.Keyboard.KeyCodes.Q,
+      r: Phaser.Input.Keyboard.KeyCodes.R,
+      q: Phaser.Input.Keyboard.KeyCodes.Q,
       enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
-      m:     Phaser.Input.Keyboard.KeyCodes.M,
+      m: Phaser.Input.Keyboard.KeyCodes.M,
     });
 
     this._lastChargeTick = 0;
@@ -133,7 +134,7 @@ export default class GameScene extends Phaser.Scene {
     });
 
     function FORTRESS_X_CENTER() { return 48 + 80 / 2; }
-    function FORTRESS_Y_TOP()     { return GAME_HEIGHT / 2 - 80; }
+    function FORTRESS_Y_TOP() { return GAME_HEIGHT / 2 - 80; }
   }
 
   // ─────────────────────────────────────────────────────────
@@ -249,8 +250,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Lane selection
-    if (JustDown(k.up)   || JustDown(k.w))   this.tank.moveLane(-1);
-    if (JustDown(k.down) || JustDown(k.s))   this.tank.moveLane(1);
+    if (JustDown(k.up) || JustDown(k.w)) this.tank.moveLane(-1);
+    if (JustDown(k.down) || JustDown(k.s)) this.tank.moveLane(1);
 
     // Rewind — undoes context, does NOT advance enemies
     if (JustDown(k.r)) {
@@ -259,7 +260,7 @@ export default class GameScene extends Phaser.Scene {
         sfxRewind();
         flash(this, 0x0055ff, 0.2, 300);
         this._generatePerfectZone();
-        this.isCharging  = false;
+        this.isCharging = false;
         this.chargeLevel = 0;
       }
     }
@@ -297,7 +298,7 @@ export default class GameScene extends Phaser.Scene {
       }
       if (JustUp(k.space)) {
         this._fireSingleShot();
-        this.isCharging  = false;
+        this.isCharging = false;
         this.chargeLevel = 0;
       }
     }
@@ -357,17 +358,17 @@ export default class GameScene extends Phaser.Scene {
   //  Firing — single shot
   // ─────────────────────────────────────────────────────────
   _fireSingleShot() {
-    const charge    = this.chargeLevel;
+    const charge = this.chargeLevel;
     // Use the drifted zone values the player was seeing at release
-    const pMin      = this.registry.get('perfectMin') ?? this.perfectMin;
-    const pMax      = this.registry.get('perfectMax') ?? this.perfectMax;
+    const pMin = this.registry.get('perfectMin') ?? this.perfectMin;
+    const pMax = this.registry.get('perfectMax') ?? this.perfectMax;
     const isPerfect = charge >= pMin && charge <= pMax;
-    
-    const ups       = this.registry.get('upgrades') || {};
-    const dmgMult   = 1 + (ups.damage || 0) * 0.25;
-    const dmg       = Math.round(calcDamage(this.ctx.pct, charge, isPerfect) * dmgMult);
-    const color     = this.ctx.color;
-    const lane      = this.tank.currentLane;
+
+    const ups = this.registry.get('upgrades') || {};
+    const dmgMult = 1 + (ups.damage || 0) * 0.25;
+    const dmg = Math.round(calcDamage(this.ctx.pct, charge, isPerfect) * dmgMult);
+    const color = this.ctx.color;
+    const lane = this.tank.currentLane;
 
     sfxFire();
     spawnMuzzleFlash(this, this.tank.barrelTipX, this.tank.barrelTipY, color);
@@ -404,7 +405,7 @@ export default class GameScene extends Phaser.Scene {
 
       for (const gt of this.ghostTanks) {
         const ghostLane = gt.currentLane;
-        const ghostDmg  = Math.round(calcDamage(this.ctx.pct, charge, isPerfect) * dmgMult);
+        const ghostDmg = Math.round(calcDamage(this.ctx.pct, charge, isPerfect) * dmgMult);
         spawnMuzzleFlash(this, gt.barrelTipX, gt.barrelTipY, C.NEON_CYAN);
         this._animateShot(ghostLane, ghostDmg, isPerfect, C.NEON_CYAN, bothDone, gt, charge);
       }
@@ -420,10 +421,10 @@ export default class GameScene extends Phaser.Scene {
   // ─────────────────────────────────────────────────────────
   _activateSplit() {
     if (!this.ability.useSplit()) return;
-    
+
     const mainLane = this.tank.currentLane;
     const others = [0, 1, 2].filter(l => l !== mainLane);
-    
+
     const withEnemies = others.filter(l => this.enemies.some(e => e.alive && e.lane === l));
     const emptyOthers = others.filter(l => !withEnemies.includes(l));
     const preferLanes = [...withEnemies, ...emptyOthers];
@@ -443,7 +444,7 @@ export default class GameScene extends Phaser.Scene {
       this.ghostTanks.push(ghost);
     }
 
-    this.splitMode      = true;
+    this.splitMode = true;
     this.splitShotsLeft = SPLIT_SHOTS;
     sfxSplit();
     flash(this, C.NEON_CYAN, 0.15, 200);
@@ -478,7 +479,7 @@ export default class GameScene extends Phaser.Scene {
 
     const startX = (srcTank || this.tank).barrelTipX;
     const startY = LANES[lane];
-    const endX   = target ? target.x : GAME_WIDTH + 20;
+    const endX = target ? target.x : GAME_WIDTH + 20;
 
     const beam = this.add.rectangle(startX, startY, 24, 6, color).setDepth(12);
     beam.setOrigin(0, 0.5);
@@ -494,7 +495,7 @@ export default class GameScene extends Phaser.Scene {
           // Armor: under-charged shots glance off heavy enemies
           const cfg = target.cfg;
           const isGlancing = cfg.armorThreshold && charge < cfg.armorThreshold;
-          let actualDmg  = isGlancing ? Math.max(1, Math.floor(dmg * cfg.armorMult)) : dmg;
+          let actualDmg = isGlancing ? Math.max(1, Math.floor(dmg * cfg.armorMult)) : dmg;
           // Perfect prompt always breaks shields
           if (isPerfect && cfg.shieldBreak) actualDmg = Math.max(actualDmg, cfg.shieldBreak);
 
@@ -521,10 +522,10 @@ export default class GameScene extends Phaser.Scene {
                 this.ctx.addFlat(OVERKILL_CTX_PENALTY);
                 showOverkillText(this, target.x, target.y);
               }
-              
+
               // 20% Chance for Powerup Drop
               if (Math.random() < 0.2) {
-                 this._dropPowerup(target.lane, target.steps);
+                this._dropPowerup(target.lane, target.steps);
               }
             } else {
               sfxHit();
@@ -539,7 +540,7 @@ export default class GameScene extends Phaser.Scene {
 
   _animateShotToTarget(target, dmg, isPerfect, color, onDone) {
     const startX = this.tank.barrelTipX;
-    const beam   = this.add.rectangle(startX, target.y, 24, 6, color).setDepth(12);
+    const beam = this.add.rectangle(startX, target.y, 24, 6, color).setDepth(12);
     beam.setOrigin(0, 0.5);
 
     this.tweens.add({
@@ -579,9 +580,9 @@ export default class GameScene extends Phaser.Scene {
   //  End turn → enemy advance phase
   // ─────────────────────────────────────────────────────────
   _endTurn() {
-    this.isCharging  = false;
+    this.isCharging = false;
     this.chargeLevel = 0;
-    this.state       = STATE.ENEMY_ADVANCE;
+    this.state = STATE.ENEMY_ADVANCE;
     this._doEnemyAdvance();
   }
 
@@ -642,7 +643,7 @@ export default class GameScene extends Phaser.Scene {
 
       // Check wave complete
       const allSpawned = this.waves.allSpawnsDone(this.waveNum);
-      const anyAlive   = this.enemies.some(e => e.alive);
+      const anyAlive = this.enemies.some(e => e.alive);
       if (allSpawned && !anyAlive) {
         this._onWaveCleared();
         return;
@@ -674,7 +675,7 @@ export default class GameScene extends Phaser.Scene {
     p.collect();
     const laneY = LANES[p.lane];
     this._floatText(TANK_X + 20, laneY - 40, p.pType.label, '#ffaa00');
-    
+
     switch (p.pType.key) {
       case 'RAG':
         this.ragActive = true;
@@ -706,7 +707,7 @@ export default class GameScene extends Phaser.Scene {
       this._agentFiring = false;
       this._cleanupDead();
       const allSpawned = this.waves.allSpawnsDone(this.waveNum);
-      const anyAlive   = this.enemies.some(e => e.alive);
+      const anyAlive = this.enemies.some(e => e.alive);
       if (allSpawned && !anyAlive) {
         this._onWaveCleared();
       } else if (this.state !== STATE.GAME_OVER) {
@@ -720,29 +721,29 @@ export default class GameScene extends Phaser.Scene {
         return;
       }
       fired++;
-      
+
       const allTargets = this.enemies.filter(e => e.alive).sort((a, b) => a.x - b.x);
       if (allTargets.length === 0) {
         onAgentComplete();
         return;
       }
-      
+
       const target = allTargets[0];
       this.tank.setLane(target.lane);
-      
+
       const dmgMult = 1 + ((this.registry.get('upgrades') || {}).damage || 0) * 0.25;
-      const dmg = Math.round(BASE_DAMAGE * Math.random() * dmgMult) + 10; 
-      
+      const dmg = Math.round(BASE_DAMAGE * Math.random() * dmgMult) + 10;
+
       spawnMuzzleFlash(this, this.tank.barrelTipX, this.tank.barrelTipY, C.WARNING_ORANGE);
       this._animateShot(target.lane, dmg, false, C.WARNING_ORANGE, () => {
-         if (fired < shots) {
-           this.time.delayedCall(100, fireShot);
-         } else {
-           onAgentComplete();
-         }
+        if (fired < shots) {
+          this.time.delayedCall(100, fireShot);
+        } else {
+          onAgentComplete();
+        }
       }, null, 50);
     };
-    
+
     this.time.delayedCall(400, fireShot);
   }
 
@@ -769,7 +770,7 @@ export default class GameScene extends Phaser.Scene {
     const startX = enemy.x - 24;
     const startY = enemy.y;
     const bullet = this.add.rectangle(startX, startY, 20, 6, C.DANGER_RED).setDepth(12);
-    
+
     sfxEnemyShot();
     spawnMuzzleFlash(this, startX, startY, C.DANGER_RED);
 
@@ -854,14 +855,30 @@ export default class GameScene extends Phaser.Scene {
 
   /** Called by WaveSystem — but we manage spawning manually via getSpawnsForTurn */
   spawnEnemy(typeKey, laneIndex) {
-    const enemy = new Enemy(this, typeKey, laneIndex, STEPS_TO_FORTRESS);
+    const baseCfg = ENEMY_TYPES[typeKey];
+    if (!baseCfg) return;
+    const loopCount = this.loopCount || 0;
+    const statMult = 1 + loopCount * 0.2;
+    const scaledCfg = { ...baseCfg };
+    scaledCfg.hp = Math.max(1, Math.round(baseCfg.hp * statMult));
+    scaledCfg.shieldDmg = Math.max(1, Math.round((baseCfg.shieldDmg || 0) * statMult));
+    if (baseCfg.shieldBreak != null) scaledCfg.shieldBreak = Math.max(1, Math.round(baseCfg.shieldBreak * statMult));
+    if (baseCfg.burstSize != null) scaledCfg.burstSize = Math.max(1, Math.round(baseCfg.burstSize * statMult));
+    const enemy = new Enemy(this, scaledCfg, laneIndex, STEPS_TO_FORTRESS);
     enemy.setDepth(9 + laneIndex * 0.1);
     this.enemies.push(enemy);
   }
 
   _onWaveCleared() {
     this.state = STATE.WAVE_CLEAR;
-    this.fortress.shield = Math.min(100, this.fortress.shield + 10);
+    const isBossWave = this.waveNum % 5 === 0;
+    if (isBossWave) {
+      this.fortress.shield = 100;
+      this.loopCount = (this.loopCount || 0) + 1;
+      this.registry.set('justBeatBoss', true);
+    } else {
+      this.fortress.shield = Math.min(100, this.fortress.shield + 10);
+    }
     getMusicSystem().play('shop');
     sfxWaveClearSnd();
     showWaveClear(this, this.waveNum, () => {
@@ -877,6 +894,12 @@ export default class GameScene extends Phaser.Scene {
     if (pendingHeal > 0) {
       this.fortress.shield = Math.min(100, this.fortress.shield + pendingHeal);
       this.registry.set('pendingHeal', 0);
+    }
+
+    // After beating boss: restart from wave 1
+    if (this.registry.get('justBeatBoss')) {
+      this.registry.remove('justBeatBoss');
+      this.waveNum = 0;
     }
 
     // Pixel zoom in transition
@@ -928,7 +951,7 @@ export default class GameScene extends Phaser.Scene {
     dsLogo.scaleX = dsLogo.scaleY;
     dsLogo.setInteractive({ useHandCursor: true })
       .on('pointerdown', () => window.open('https://dsoul.org', '_blank'));
-    
+
     const dsText = this.add.text(-60, 0, 'Skill Up at DSoul.org', {
       fontFamily: 'monospace',
       fontSize: '18px',
@@ -971,7 +994,7 @@ export default class GameScene extends Phaser.Scene {
 
     const w = GAME_WIDTH, h = GAME_HEIGHT;
     const errName = (err && err.name) || 'Error';
-    const errMsg  = (err && err.message) || 'Unknown error';
+    const errMsg = (err && err.message) || 'Unknown error';
     const shortMsg = errMsg.length > 60 ? errMsg.slice(0, 57) + '...' : errMsg;
 
     this.add.rectangle(w / 2, h / 2, 520, 200, C.VOID, 0.95).setDepth(70);
@@ -1044,14 +1067,14 @@ export default class GameScene extends Phaser.Scene {
 
   _drawAimLine() {
     this.aimGfx.clear();
-    const lane   = this.tank.currentLane;
-    const y      = LANES[lane];
+    const lane = this.tank.currentLane;
+    const y = LANES[lane];
     const target = this.enemies
       .filter(e => e.alive && (e.lane === lane || e.cfg.isBoss))
       .sort((a, b) => a.x - b.x)[0];
 
     if (!target) return;
-    const pct      = this.chargeLevel / 100;
+    const pct = this.chargeLevel / 100;
     const aimColor = this.ctx.isOptimal ? C.NEON_GREEN : this.ctx.isDanger ? C.DANGER_RED : C.NEON_CYAN;
     this.aimGfx.lineStyle(1, aimColor, 0.3 + pct * 0.45);
     this.aimGfx.lineBetween(this.tank.barrelTipX, y, target.x, target.y);
@@ -1068,7 +1091,7 @@ export default class GameScene extends Phaser.Scene {
   //  Moving perfect zone helpers
   // ─────────────────────────────────────────────────────────
   _generatePerfectZone() {
-    const width  = Phaser.Math.Between(PERFECT_WIDTH_MIN, PERFECT_WIDTH_MAX);
+    const width = Phaser.Math.Between(PERFECT_WIDTH_MIN, PERFECT_WIDTH_MAX);
     const center = Phaser.Math.FloatBetween(
       PERFECT_CENTER_MIN + width / 2,
       PERFECT_CENTER_MAX - width / 2,
@@ -1088,13 +1111,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _pushTargetKillCharge() {
-    const lane   = this.tank.currentLane;
+    const lane = this.tank.currentLane;
     const target = this.enemies
       .filter(e => e.alive && (e.lane === lane || e.cfg.isBoss))
       .sort((a, b) => a.x - b.x)[0];
     if (target) {
       const ctxMult = Math.max(0, 1 - Math.abs(this.ctx.pct - 60) / 60);
-      const needed  = ctxMult > 0
+      const needed = ctxMult > 0
         ? Math.ceil((target.hp / (BASE_DAMAGE * ctxMult)) * 100)
         : 101;
       this.registry.set('targetKillCharge', Math.min(101, needed));
@@ -1115,22 +1138,22 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _syncRegistry() {
-    this.registry.set('score',       this.score);
-    this.registry.set('wave',        this.waveNum);
-    this.registry.set('turn',        this.turnNum);
-    this.registry.set('ctx',         this.ctx.pct);
-    this.registry.set('ctxColor',    this.ctx.color);
-    this.registry.set('ctxSludge',   this.ctx.sludge);
-    this.registry.set('ctxFloor',    this.ctx.floor);
-    this.registry.set('shield',      this.fortress.shield);
-    this.registry.set('state',       this.state);
-    this.registry.set('charging',    this.isCharging);
+    this.registry.set('score', this.score);
+    this.registry.set('wave', this.waveNum);
+    this.registry.set('turn', this.turnNum);
+    this.registry.set('ctx', this.ctx.pct);
+    this.registry.set('ctxColor', this.ctx.color);
+    this.registry.set('ctxSludge', this.ctx.sludge);
+    this.registry.set('ctxFloor', this.ctx.floor);
+    this.registry.set('shield', this.fortress.shield);
+    this.registry.set('state', this.state);
+    this.registry.set('charging', this.isCharging);
     this.registry.set('chargeLevel', this.chargeLevel);
     this.registry.set('rewindAvail', this.ability.rewindAvailable);
     this.registry.set('rewindCount', this.ability.rewindCount);
-    this.registry.set('splitPct',    this.ability.splitPct);
-    this.registry.set('splitReady',  this.ability.splitReady);
-    this.registry.set('splitMode',   this.splitMode);
+    this.registry.set('splitPct', this.ability.splitPct);
+    this.registry.set('splitReady', this.ability.splitReady);
+    this.registry.set('splitMode', this.splitMode);
     try { this.registry.set('hiScore', parseInt(localStorage.getItem('hiScore') || '0')); }
     catch (_) { this.registry.set('hiScore', 0); }
   }
