@@ -7,6 +7,7 @@ import ShopScene   from './scenes/ShopScene.js';
 
 const config = {
   type: Phaser.AUTO,
+  parent: 'game-root',
   width: GAME_WIDTH,
   height: GAME_HEIGHT,
   backgroundColor: '#0a0014',

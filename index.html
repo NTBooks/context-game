@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Clawed's Revenge</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230a0014'/><rect x='3' y='6' width='8' height='20' rx='1' fill='%230055ff' opacity='.6'/><rect x='3' y='6' width='8' height='13' rx='1' fill='%2339ff14'/><line x1='3' y1='19' x2='11' y2='19' stroke='%23ffd700' stroke-width='1.5'/><rect x='14' y='13' width='15' height='6' rx='2' fill='%23334'/><rect x='14' y='13' width='10' height='6' rx='2' fill='%2300e5ff' opacity='.85'/><polygon points='29,16 24,13 24,19' fill='%2339ff14'/></svg>">
@@ -22,27 +22,27 @@
 
     body {
       background: #0a0014;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      overscroll-behavior: none;
+    }
+
+    #game-root {
+      position: fixed;
+      inset: 0;
       display: grid;
       place-items: center;
 
-      /* Mobile browsers: prefer "real" viewport heights to avoid bottom anchoring in portrait */
-      height: 100vh;
-      height: 100svh;
-      height: 100dvh;
-      min-height: 100vh;
-      min-height: 100svh;
-      min-height: 100dvh;
+      /* Most reliable mobile viewport height: use innerHeight-derived --vh */
+      height: calc(var(--vh, 1vh) * 100);
+      width: 100vw;
 
       padding:
         env(safe-area-inset-top)
         env(safe-area-inset-right)
         env(safe-area-inset-bottom)
         env(safe-area-inset-left);
-
-      touch-action: none;
-      -webkit-user-select: none;
-      user-select: none;
-      overscroll-behavior: none;
     }
 
     canvas {
@@ -56,6 +56,17 @@
 </head>
 
 <body>
+  <div id="game-root"></div>
+  <script>
+    (() => {
+      const setVh = () => {
+        document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+      };
+      setVh();
+      window.addEventListener('resize', setVh, { passive: true });
+      window.addEventListener('orientationchange', setVh, { passive: true });
+    })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
   <script type="module" src="src/main.js"></script>
 </body>
