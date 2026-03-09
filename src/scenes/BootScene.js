@@ -14,6 +14,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('skill_charge', 'assets/skill_charge.png');
     this.load.image('skill_heal', 'assets/skill_heal.png');
     this.load.image('skill_splits', 'assets/skill_splits.png');
+    this.load.image('dsoul_logo', 'logos/DSLOGO.png');
   }
 
   create() {

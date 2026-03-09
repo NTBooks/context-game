@@ -59,13 +59,32 @@ export default class MenuScene extends Phaser.Scene {
     });
 
     // Start button
-    const startText = this.add.text(GAME_WIDTH / 2, 506, '[ PRESS SPACE TO BEGIN ]', {
+    const startText = this.add.text(GAME_WIDTH / 2, 485, '[ PRESS SPACE TO BEGIN ]', {
       fontFamily: 'monospace',
       fontSize: '22px',
       color: '#39ff14',
       stroke: '#0a0014',
       strokeThickness: 3,
     }).setOrigin(0.5);
+
+    // DSoul.org Link
+    const dsGroup = this.add.container(GAME_WIDTH / 2, 520);
+    const dsLogo = this.add.image(-100, 0, 'dsoul_logo').setOrigin(0.5);
+    dsLogo.displayHeight = 24;
+    dsLogo.scaleX = dsLogo.scaleY;
+    dsLogo.setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => window.open('https://dsoul.org', '_blank'));
+    
+    const dsText = this.add.text(-60, 0, 'Skill Up at DSoul.org', {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#00e5ff',
+      stroke: '#0a0014',
+      strokeThickness: 2,
+    }).setOrigin(0, 0.5);
+    dsText.setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => window.open('https://dsoul.org', '_blank'));
+    dsGroup.add([dsLogo, dsText]);
 
     // Blink
     this.tweens.add({
