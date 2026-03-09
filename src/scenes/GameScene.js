@@ -120,8 +120,10 @@ export default class GameScene extends Phaser.Scene {
     this.tank.setDepth(10);
     this.aimGfx = this.add.graphics().setDepth(8);
 
-    // "CODEBASE" label above fortress
-    this.add.text(FORTRESS_X_CENTER(), FORTRESS_Y_TOP() - 10, 'CODEBASE', {
+    // "CODEBASE" label directly above fortress sprite
+    const fortressCenterX = this.fortress.x;
+    const fortressTopY = this.fortress.y - this.fortress.sprite.displayHeight / 2;
+    this.add.text(fortressCenterX, fortressTopY - 4, 'CODEBASE', {
       fontFamily: 'monospace', fontSize: '10px', color: '#8899aa',
     }).setOrigin(0.5, 1).setDepth(6);
 
@@ -133,9 +135,6 @@ export default class GameScene extends Phaser.Scene {
     this.tank.introAnimation(() => {
       this.time.delayedCall(300, () => this._startNextWave());
     });
-
-    function FORTRESS_X_CENTER() { return 48 + 80 / 2; }
-    function FORTRESS_Y_TOP() { return GAME_HEIGHT / 2 - 80; }
   }
 
   // ─────────────────────────────────────────────────────────

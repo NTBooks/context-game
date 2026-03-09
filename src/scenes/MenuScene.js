@@ -35,7 +35,7 @@ export default class MenuScene extends Phaser.Scene {
     this.bgClouds = this.add.tileSprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 'bg-clouds');
 
     // Title (pulled up for breathing room)
-    this.add.text(GAME_WIDTH / 2, 58, 'CURSE OF THE\nZERO-GRAVITY CODE:\nCLAWED\'S REVENGE', {
+    this.add.text(GAME_WIDTH / 2, 58, 'CURSE OF THE\nZERO-GRAVITY CODE:\nVIBE BLASTER!', {
       fontFamily: 'monospace',
       fontSize: '28px',
       color: '#00e5ff',
