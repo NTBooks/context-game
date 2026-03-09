@@ -67,7 +67,7 @@ export default class GameScene extends Phaser.Scene {
     // ── Split mode ───────────────────────────────────────────
     this.splitMode      = false;
     this.splitShotsLeft = 0;
-    this.ghostTank      = null;
+    this.ghostTanks     = [];
 
     // ── Input ────────────────────────────────────────────────
     this.keys = this.input.keyboard.addKeys({
@@ -119,7 +119,9 @@ export default class GameScene extends Phaser.Scene {
     this.bgClouds.tilePositionX = Math.floor(this._bgCloudOffset / 4) * 4;
 
     this.tank.update(time, delta);
-    if (this.ghostTank) this.ghostTank.update(time, delta);
+    if (this.ghostTanks) {
+      for (const gt of this.ghostTanks) gt.update(time, delta);
+    }
     this.fortress.update(time, delta);
     for (const e of this.enemies) e.update(time, delta);
 
@@ -254,20 +256,23 @@ export default class GameScene extends Phaser.Scene {
 
     this._generatePerfectZone(); // new zone ready for next shot
 
-    if (this.splitMode && this.ghostTank) {
-      const ghostLane = this.ghostTank.currentLane;
-      const ghostDmg  = Math.round(calcDamage(this.ctx.pct, charge, isPerfect) * dmgMult);
-      spawnMuzzleFlash(this, this.ghostTank.barrelTipX, this.ghostTank.barrelTipY, C.NEON_CYAN);
-
-      let pending = 2;
+    if (this.splitMode && this.ghostTanks && this.ghostTanks.length > 0) {
+      let pending = 1 + this.ghostTanks.length;
       const bothDone = () => {
         if (--pending > 0) return;
         this.splitShotsLeft--;
         if (this.splitShotsLeft <= 0) this._endSplitMode();
         if (!overheated) this._endTurn();
       };
+
       this._animateShot(lane, dmg, isPerfect, color, bothDone, null, charge);
-      this._animateShot(ghostLane, ghostDmg, isPerfect, C.NEON_CYAN, bothDone, this.ghostTank, charge);
+
+      for (const gt of this.ghostTanks) {
+        const ghostLane = gt.currentLane;
+        const ghostDmg  = Math.round(calcDamage(this.ctx.pct, charge, isPerfect) * dmgMult);
+        spawnMuzzleFlash(this, gt.barrelTipX, gt.barrelTipY, C.NEON_CYAN);
+        this._animateShot(ghostLane, ghostDmg, isPerfect, C.NEON_CYAN, bothDone, gt, charge);
+      }
     } else {
       this._animateShot(lane, dmg, isPerfect, color, () => {
         if (!overheated) this._endTurn();
@@ -280,41 +285,46 @@ export default class GameScene extends Phaser.Scene {
   // ─────────────────────────────────────────────────────────
   _activateSplit() {
     if (!this.ability.useSplit()) return;
-    const ghostLane = this._bestGhostLane();
+    
+    const mainLane = this.tank.currentLane;
+    const others = [0, 1, 2].filter(l => l !== mainLane);
+    
+    const withEnemies = others.filter(l => this.enemies.some(e => e.alive && e.lane === l));
+    const emptyOthers = others.filter(l => !withEnemies.includes(l));
+    const preferLanes = [...withEnemies, ...emptyOthers];
 
-    this.ghostTank = new Tank(this, ghostLane);
-    this.ghostTank.setDepth(10);
-    this.ghostTank.setAlpha(0.65);
-    // Purple tint on all child objects
-    this.ghostTank.list.forEach(child => {
-      if (child.setTint) child.setTint(0xaa44ff);
-    });
+    const ups = this.registry.get('upgrades') || {};
+    const numGhosts = 1 + (ups.splits || 0);
 
-    const ups           = this.registry.get('upgrades') || {};
+    this.ghostTanks = [];
+    for (let i = 0; i < numGhosts && i < preferLanes.length; i++) {
+      const lane = preferLanes[i];
+      const ghost = new Tank(this, lane);
+      ghost.setDepth(10);
+      ghost.setAlpha(0.65);
+      ghost.list.forEach(child => {
+        if (child.setTint) child.setTint(0xaa44ff);
+      });
+      this.ghostTanks.push(ghost);
+    }
+
     this.splitMode      = true;
-    this.splitShotsLeft = SPLIT_SHOTS + (ups.splits || 0);
+    this.splitShotsLeft = SPLIT_SHOTS;
     flash(this, C.NEON_CYAN, 0.15, 200);
     this._floatText(TANK_X + 80, GAME_HEIGHT - 60, `SPLIT ACTIVE — ${this.splitShotsLeft} SHOTS`, '#00e5ff');
   }
 
-  _bestGhostLane() {
-    const main = this.tank.currentLane;
-    // Prefer a lane with alive enemies that differs from the main lane
-    const others = [0, 1, 2].filter(l => l !== main);
-    const withEnemies = others.filter(l => this.enemies.some(e => e.alive && e.lane === l));
-    if (withEnemies.length > 0) return withEnemies[0];
-    return others[0];
-  }
-
   _endSplitMode() {
     this.splitMode = false;
-    if (!this.ghostTank) return;
-    const gt = this.ghostTank;
-    this.ghostTank = null;
-    this.tweens.add({
-      targets: gt, alpha: 0, duration: 350,
-      onComplete: () => gt.destroy(),
-    });
+    if (this.ghostTanks) {
+      for (const gt of this.ghostTanks) {
+        this.tweens.add({
+          targets: gt, alpha: 0, duration: 350,
+          onComplete: () => gt.destroy(),
+        });
+      }
+      this.ghostTanks = [];
+    }
   }
 
   // ─────────────────────────────────────────────────────────

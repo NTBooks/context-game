@@ -6,7 +6,7 @@ const SKILLS = [
   { id: 'rewind', name: 'Upgrade Tier', desc: '+1 Extra Rewind Limit', icon: 'skill_rewind' },
   { id: 'charge', name: 'Multitasking', desc: '+50% Split Charge Rate', icon: 'skill_charge' },
   { id: 'heal', name: 'Merge Review', desc: 'Heals 30% Integrity', icon: 'skill_heal' },
-  { id: 'splits', name: 'More Tokens', desc: '+1 Extra Split Shot', icon: 'skill_splits' },
+  { id: 'splits', name: 'More Tokens', desc: '+1 Ghost Ship', icon: 'skill_splits' },
 ];
 
 export default class ShopScene extends Phaser.Scene {
