@@ -56,7 +56,7 @@ export default class UIScene extends Phaser.Scene {
     this._txt(CHG_X, CHG_Y - 15, 'CRAFT PROMPT', '11px', '#8899aa');
     this.chgPctTxt = this._txt(CHG_X + CHG_W + 6, CHG_Y + 1, '0%', '12px', '#aaccff');
     this.perfectTxt = this._txt(CHG_X + CHG_W / 2, CHG_Y - 15, '', '12px', '#ffd700').setOrigin(0.5, 1);
-    this._txt(CHG_X, CHG_Y + CHG_H + 5, 'HOLD [SPACE] TO CRAFT · RELEASE TO SEND · [ENTER] SKIP TURN', '10px', '#445566');
+    this.controlsHintTxt = this._txt(CHG_X, CHG_Y + CHG_H + 5, 'HOLD [SPACE] TO CRAFT · RELEASE TO SEND · [ENTER] SKIP TURN', '10px', '#445566');
 
     // ── Ability indicators (clickable) ─────────────────────────
     this.rewindTxt = this._txt(CHG_X + CHG_W + 48, CHG_Y - 4,  '[R] REWIND', '12px', '#00e5ff');
@@ -126,6 +126,22 @@ export default class UIScene extends Phaser.Scene {
     this._lastCharging    = false;
     this._rainbowHue      = 0;
     this._rainbowActive   = false;
+
+    // ── Mobile controls (virtual buttons) ─────────────────────
+    this._mobileMode = shouldShowMobileControls();
+    this.registry.set('mobileMode', this._mobileMode);
+    if (this._mobileMode) {
+      this.controlsHintTxt.setText('HOLD FIRE TO CRAFT · RELEASE TO SEND · TAP SKIP TO END TURN');
+      this._mobileControls = createMobileControls(this);
+      this.events.once('shutdown', () => {
+        if (this._mobileControls) {
+          this._mobileControls.destroy();
+          this._mobileControls = null;
+        }
+      });
+    } else {
+      this._mobileControls = null;
+    }
   }
 
   update(time, delta) {
@@ -511,4 +527,130 @@ export default class UIScene extends Phaser.Scene {
       stroke: '#0a0014', strokeThickness: 2,
     }).setDepth(80);
   }
+}
+
+function shouldShowMobileControls() {
+  try {
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    const small = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
+    return coarse || small;
+  } catch (_) {
+    return false;
+  }
+}
+
+function createMobileControls(scene) {
+  const btnDepth = 110;
+  const uiDepth = 109;
+  const pad = 18;
+
+  const getVInput = () => scene.registry.get('vInput') || {};
+  const setVInput = (patch) => scene.registry.set('vInput', { ...getVInput(), ...patch });
+  const captureUi = (ms = 250) => {
+    const now = scene.game && scene.game.getTime ? scene.game.getTime() : Date.now();
+    scene.registry.set('uiPointerCaptureUntil', now + ms);
+  };
+
+  const makeBtn = (x, y, w, h, label, fill, stroke) => {
+    const container = scene.add.container(x, y).setDepth(uiDepth);
+    const bg = scene.add.rectangle(0, 0, w, h, fill, 0.85).setStrokeStyle(2, stroke, 0.9);
+    const txt = scene.add.text(0, 0, label, {
+      fontFamily: 'monospace',
+      fontSize: '16px',
+      color: '#f0f0ff',
+      stroke: '#000000',
+      strokeThickness: 3,
+    }).setOrigin(0.5);
+    container.add([bg, txt]);
+    container.setSize(w, h);
+    container.setInteractive({ useHandCursor: true });
+    container.on('pointerover', () => bg.setAlpha(1));
+    container.on('pointerout', () => bg.setAlpha(0.85));
+    return { container, bg, txt };
+  };
+
+  const makeCircleBtn = (x, y, r, label, fill, stroke) => {
+    const container = scene.add.container(x, y).setDepth(uiDepth);
+    const bg = scene.add.circle(0, 0, r, fill, 0.85).setStrokeStyle(3, stroke, 0.9);
+    const txt = scene.add.text(0, 0, label, {
+      fontFamily: 'monospace',
+      fontSize: '16px',
+      color: '#f0f0ff',
+      stroke: '#000000',
+      strokeThickness: 3,
+      align: 'center',
+    }).setOrigin(0.5);
+    container.add([bg, txt]);
+    container.setSize(r * 2, r * 2);
+    container.setInteractive(new Phaser.Geom.Circle(0, 0, r), Phaser.Geom.Circle.Contains);
+    container.on('pointerover', () => bg.setAlpha(1));
+    container.on('pointerout', () => bg.setAlpha(0.85));
+    return { container, bg, txt };
+  };
+
+  // Left side: lane buttons
+  const up = makeBtn(86, GAME_HEIGHT - 140, 88, 64, '▲', 0x1a0035, 0x00e5ff);
+  up.container.setDepth(btnDepth);
+  up.container.on('pointerdown', () => { captureUi(); setVInput({ laneDelta: -1 }); });
+
+  const down = makeBtn(86, GAME_HEIGHT - 64, 88, 64, '▼', 0x1a0035, 0x00e5ff);
+  down.container.setDepth(btnDepth);
+  down.container.on('pointerdown', () => { captureUi(); setVInput({ laneDelta: 1 }); });
+
+  // Center: skip
+  const skip = makeBtn(GAME_WIDTH / 2, GAME_HEIGHT - 64, 140, 56, 'SKIP', 0x1a0035, 0x445566);
+  skip.container.setDepth(btnDepth);
+  skip.container.on('pointerdown', () => { captureUi(); scene.registry.set('requestSkip', true); });
+
+  // Right side: fire + abilities
+  const fire = makeCircleBtn(GAME_WIDTH - 98, GAME_HEIGHT - 98, 62, 'HOLD\nFIRE', 0x004422, 0x39ff14);
+  fire.container.setDepth(btnDepth);
+
+  let firePointerId = null;
+  const releaseFire = () => {
+    if (firePointerId == null) return;
+    firePointerId = null;
+    setVInput({ chargeHeld: false, chargeReleased: true });
+  };
+
+  fire.container.on('pointerdown', (pointer) => {
+    captureUi(8000);
+    firePointerId = pointer && pointer.id != null ? pointer.id : 0;
+    setVInput({ chargeHeld: true, chargeReleased: false });
+  });
+  fire.container.on('pointerup', () => { captureUi(); releaseFire(); });
+  fire.container.on('pointerout', () => { captureUi(); releaseFire(); });
+
+  const globalPointerUp = (pointer) => {
+    const pid = pointer && pointer.id != null ? pointer.id : 0;
+    if (firePointerId != null && pid === firePointerId) releaseFire();
+  };
+  scene.input.on('pointerup', globalPointerUp);
+  scene.events.once('shutdown', () => scene.input.off('pointerup', globalPointerUp));
+
+  const rewind = makeBtn(GAME_WIDTH - 250, GAME_HEIGHT - 140, 120, 56, 'REWIND', 0x1a0035, 0x00e5ff);
+  rewind.container.setDepth(btnDepth);
+  rewind.container.on('pointerdown', () => { captureUi(); scene.registry.set('requestRewind', true); });
+
+  const split = makeBtn(GAME_WIDTH - 250, GAME_HEIGHT - 64, 120, 56, 'SPLIT', 0x1a0035, 0x00e5ff);
+  split.container.setDepth(btnDepth);
+  split.container.on('pointerdown', () => { captureUi(); scene.registry.set('requestSplit', true); });
+
+  // Safe-area-ish nudge (best-effort; still works without it)
+  const leftPad = pad;
+  const rightPad = pad;
+  up.container.x += leftPad;
+  down.container.x += leftPad;
+  rewind.container.x -= rightPad;
+  split.container.x -= rightPad;
+  fire.container.x -= rightPad;
+
+  const root = scene.add.container(0, 0, [
+    up.container, down.container, skip.container, fire.container, rewind.container, split.container,
+  ]).setDepth(btnDepth);
+
+  // Avoid accidental game interactions through the buttons
+  [up, down, skip, fire, rewind, split].forEach(b => b.container.on('pointerdown', (p) => p && p.event && p.event.preventDefault && p.event.preventDefault()));
+
+  return root;
 }

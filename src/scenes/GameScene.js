@@ -72,6 +72,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.ragActive = false;
     this._agentFiring = false;
+    this._chargeStartedByVirtual = false;
 
     // ── Perfect zone (dynamic — changes position & width each shot) ─
     this.perfectMin = PERFECT_ZONE_MIN;
@@ -228,6 +229,7 @@ export default class GameScene extends Phaser.Scene {
   _handleInput(time) {
     const { JustDown, JustUp } = Phaser.Input.Keyboard;
     const k = this.keys;
+    const vInput = this.registry.get('vInput') || {};
 
     // Mouse/UI-triggered ability requests (from UIScene click or context menu)
     if (this.registry.get('requestRewind')) {
@@ -248,10 +250,20 @@ export default class GameScene extends Phaser.Scene {
         return;
       }
     }
+    if (this.registry.get('requestSkip')) {
+      this.registry.remove('requestSkip');
+      this.ctx.canRewind = false;
+      this._endTurn();
+      return;
+    }
 
     // Lane selection
     if (JustDown(k.up) || JustDown(k.w)) this.tank.moveLane(-1);
     if (JustDown(k.down) || JustDown(k.s)) this.tank.moveLane(1);
+    if (vInput.laneDelta === -1 || vInput.laneDelta === 1) {
+      this.tank.moveLane(vInput.laneDelta);
+      this.registry.set('vInput', { ...vInput, laneDelta: 0 });
+    }
 
     // Rewind — undoes context, does NOT advance enemies
     if (JustDown(k.r)) {
@@ -283,6 +295,11 @@ export default class GameScene extends Phaser.Scene {
       this.isCharging = true;
       this.chargeStart = time;
     }
+    if (vInput.chargeHeld && !this.isCharging) {
+      this.isCharging = true;
+      this._chargeStartedByVirtual = true;
+      this.chargeStart = time;
+    }
     // Mute toggle
     if (JustDown(k.m)) {
       toggleMute();
@@ -296,10 +313,13 @@ export default class GameScene extends Phaser.Scene {
         sfxChargeTick(this.chargeLevel);
         this._lastChargeTick = time;
       }
-      if (JustUp(k.space)) {
+      const virtualReleased = !!vInput.chargeReleased || (this._chargeStartedByVirtual && !vInput.chargeHeld);
+      if (JustUp(k.space) || virtualReleased) {
         this._fireSingleShot();
         this.isCharging = false;
         this.chargeLevel = 0;
+        this._chargeStartedByVirtual = false;
+        if (vInput.chargeReleased) this.registry.set('vInput', { ...vInput, chargeReleased: false });
       }
     }
   }
@@ -311,12 +331,16 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _onPointerMove(pointer) {
+    const capUntil = this.registry.get('uiPointerCaptureUntil') || 0;
+    if (capUntil > this.game.getTime()) return;
     if (this.state !== STATE.PLAYER_TURN || this._mouseLaneLocked || this.isCharging) return;
     const lane = this._laneIndexFromY(pointer.y);
     if (lane !== this.tank.currentLane) this.tank.setLane(lane);
   }
 
   _onPointerDown(pointer) {
+    const capUntil = this.registry.get('uiPointerCaptureUntil') || 0;
+    if (capUntil > this.game.getTime()) return;
     this._resetIdleTimer();
     if (pointer.button === 2) {
       this.registry.set('abilityMenu', { x: pointer.x, y: pointer.y });
@@ -337,6 +361,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _onPointerUp(pointer) {
+    const capUntil = this.registry.get('uiPointerCaptureUntil') || 0;
+    if (capUntil > this.game.getTime()) return;
     if (pointer.button !== 0 || !this.isCharging || !this._chargeStartedByMouse) return;
     this._fireSingleShot();
     this.isCharging = false;
