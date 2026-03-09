@@ -633,6 +633,25 @@ export default class GameScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '15px', color: '#6b2fa0',
     }).setOrigin(0.5).setDepth(71);
 
+    // DSoul.org Link
+    const dsGroup = this.add.container(w / 2, h / 2 + 100).setDepth(71);
+    const dsLogo = this.add.image(-110, 0, 'dsoul_logo').setOrigin(0.5);
+    dsLogo.displayHeight = 30;
+    dsLogo.scaleX = dsLogo.scaleY;
+    dsLogo.setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => window.open('https://dsoul.org', '_blank'));
+    
+    const dsText = this.add.text(-60, 0, 'Skill Up at DSoul.org', {
+      fontFamily: 'monospace',
+      fontSize: '18px',
+      color: '#00e5ff',
+      stroke: '#0a0014',
+      strokeThickness: 3,
+    }).setOrigin(0, 0.5);
+    dsText.setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => window.open('https://dsoul.org', '_blank'));
+    dsGroup.add([dsLogo, dsText]);
+
     this.time.delayedCall(800, () => {
       this.input.keyboard.once('keydown-SPACE', () => {
         this.scene.stop('UIScene');
