@@ -131,6 +131,31 @@ export class Tank extends Phaser.GameObjects.Container {
     this.barrelSplit.setVisible(active);
   }
 
+  /** Temporarily change L.L.M. text color to show RAG is active */
+  applyRagVisuals(isActive) {
+    if (isActive) {
+      this.label.setText('R.A.G.');
+      this.label.setColor('#39ff14'); // NEON_GREEN
+      if (!this._ragTween) {
+        this._ragTween = this.scene.tweens.add({
+          targets: this.label,
+          scale: 1.5,
+          yoyo: true,
+          repeat: -1,
+          duration: 300
+        });
+      }
+    } else {
+      this.label.setText('L.L.M.');
+      this.label.setColor('#00ffff');
+      this.label.setScale(1);
+      if (this._ragTween) {
+        this._ragTween.stop();
+        this._ragTween = null;
+      }
+    }
+  }
+
   /** X position of barrel tip */
   get barrelTipX() { return this.x + 64; }
   get barrelTipY() { return this.y - 4; }

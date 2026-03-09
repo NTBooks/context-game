@@ -10,7 +10,7 @@ export default class MenuScene extends Phaser.Scene {
     this.bgClouds = this.add.tileSprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 'bg-clouds');
 
     // Title
-    this.add.text(GAME_WIDTH / 2, 105, 'CURSE OF THE\nANTIGRAVITY CODEX:\nCLAUDE\'S REVENGE', {
+    this.add.text(GAME_WIDTH / 2, 105, 'CURSE OF THE\nZERO-GRAVITY CODE:\nCLAWED\'S REVENGE', {
       fontFamily: 'monospace',
       fontSize: '28px',
       color: '#00e5ff',
@@ -74,7 +74,7 @@ export default class MenuScene extends Phaser.Scene {
     dsLogo.scaleX = dsLogo.scaleY;
     dsLogo.setInteractive({ useHandCursor: true })
       .on('pointerdown', () => window.open('https://dsoul.org', '_blank'));
-    
+
     const dsText = this.add.text(-60, 0, 'Skill Up at DSoul.org', {
       fontFamily: 'monospace',
       fontSize: '14px',

@@ -17,6 +17,10 @@ export class AbilitySystem {
 
   get rewindAvailable() { return this.rewindCount > 0; }
 
+  addRewindCharge() {
+    this.rewindCount++;
+  }
+
   /** Call after each enemy kill. Returns true if split became ready. */
   addSplitCharge(amount = SPLIT_PER_KILL) {
     const ups = this.scene.registry.get('upgrades') || {};

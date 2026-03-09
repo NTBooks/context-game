@@ -8,6 +8,10 @@ export default class BootScene extends Phaser.Scene {
   constructor() { super('BootScene'); }
 
   preload() {
+    this.load.on('loaderror', (file) => {
+      console.warn(`[BootScene] Failed to load asset: ${file.key} (${file.url})`);
+    });
+
     this.load.image('skill_damage', 'assets/skill_damage.png');
     this.load.image('skill_cost', 'assets/skill_cost.png');
     this.load.image('skill_rewind', 'assets/skill_rewind.png');
@@ -166,14 +170,14 @@ void main() {
     // Pixelated blocky clouds
     const nebColors = [0x3d1a6b, 0x6b2fa0, 0x1a0035];
     for (let i = 0; i < 15; i++) {
-      let nx = Phaser.Math.Between(50, 910);
-      let ny = Phaser.Math.Between(30, 510);
-      nx = nx - (nx % 4);
-      ny = ny - (ny % 4);
       let baseW = Phaser.Math.Between(60, 160);
       let baseH = Phaser.Math.Between(40, 90);
       baseW -= (baseW % 4);
       baseH -= (baseH % 4);
+      let nx = Phaser.Math.Between(0, 960 - baseW);
+      let ny = Phaser.Math.Between(0, 540 - baseH);
+      nx = nx - (nx % 4);
+      ny = ny - (ny % 4);
       g.fillStyle(nebColors[i % nebColors.length], 0.25);
       
       // Draw blocky pixelated shape

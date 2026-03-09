@@ -19,6 +19,15 @@ const CHG_H    = 22;
 // Rainbow hue cycle speed
 const RAINBOW_SPEED = 0.0025;
 
+const LOADOUT_DEFS = [
+  { id: 'damage',  icon: 'skill_damage'  },
+  { id: 'cost',    icon: 'skill_cost'    },
+  { id: 'rewind',  icon: 'skill_rewind'  },
+  { id: 'charge',  icon: 'skill_charge'  },
+  { id: 'splits',  icon: 'skill_splits'  },
+  { id: 'heal',    icon: 'skill_heal'    },
+];
+
 export default class UIScene extends Phaser.Scene {
   constructor() { super({ key: 'UIScene', active: false }); }
 
@@ -64,6 +73,19 @@ export default class UIScene extends Phaser.Scene {
       strokeThickness: 4,
       shadow: { offsetX: 0, offsetY: 0, color: '#ff00ff', blur: 30, fill: true },
     }).setOrigin(0.5).setDepth(91).setAlpha(0);
+
+    // ── Loadout icons (right of score) ──────────────────────
+    this._loadoutIcons = [];
+    this._loadoutSnapshot = '';
+    const loadoutX = 200;
+    const loadoutY = 12;
+    for (let i = 0; i < LOADOUT_DEFS.length; i++) {
+      const img = this.add.image(loadoutX + i * 28, loadoutY, LOADOUT_DEFS[i].icon)
+        .setDisplaySize(22, 22).setOrigin(0.5).setDepth(80).setAlpha(0);
+      const badge = this._txt(loadoutX + i * 28 + 9, loadoutY + 8, '', '9px', '#ffd700')
+        .setOrigin(0.5).setAlpha(0);
+      this._loadoutIcons.push({ img, badge });
+    }
 
     // ── Prompt animation state ────────────────────────────────
     this._promptCooldown  = 0;   // ms until next funny prompt
@@ -130,6 +152,28 @@ export default class UIScene extends Phaser.Scene {
     } else {
       this.splitTxt.setText(`[Q] SPLIT   ${Math.round(splitPct)}%`);
       this.splitTxt.setStyle({ color: '#8899aa' });
+    }
+
+    // ── Loadout icons ─────────────────────────────────────────
+    const ups = r.get('upgrades') || {};
+    const snap = JSON.stringify(ups);
+    if (snap !== this._loadoutSnapshot) {
+      this._loadoutSnapshot = snap;
+      let slot = 0;
+      for (let i = 0; i < LOADOUT_DEFS.length; i++) {
+        const def = LOADOUT_DEFS[i];
+        const count = ups[def.id] || 0;
+        const { img, badge } = this._loadoutIcons[i];
+        if (count > 0) {
+          img.setPosition(200 + slot * 28, 12).setAlpha(1);
+          badge.setPosition(200 + slot * 28 + 9, 20);
+          badge.setText(count > 1 ? `×${count}` : '').setAlpha(count > 1 ? 1 : 0);
+          slot++;
+        } else {
+          img.setAlpha(0);
+          badge.setAlpha(0);
+        }
+      }
     }
 
     // ── Draw bars ────────────────────────────────────────────

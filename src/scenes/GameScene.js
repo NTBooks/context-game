@@ -7,8 +7,8 @@ import {
   PERFECT_CENTER_MIN, PERFECT_CENTER_MAX,
   PERFECT_DRIFT_SPEED, PERFECT_DRIFT_RANGE,
   OVERKILL_RATIO, OVERKILL_CTX_PENALTY,
-  BASE_DAMAGE,
-  SPLIT_SHOTS,
+  BASE_DAMAGE, CTX_MAX,
+  SPLIT_SHOTS, SPLIT_COST,
   C, STATE, calcDamage, ctxToColor,
 } from '../constants.js';
 import { HeatSystem }    from '../systems/HeatSystem.js';
@@ -16,6 +16,7 @@ import { AbilitySystem } from '../systems/AbilitySystem.js';
 import { WaveSystem }    from '../systems/WaveSystem.js';
 import { Tank }          from '../entities/Tank.js';
 import { Enemy }         from '../entities/Enemy.js';
+import { Powerup, POWERUP_TYPES } from '../entities/Powerup.js';
 import { Fortress }      from '../entities/Fortress.js';
 import {
   spawnExplosion, spawnMuzzleFlash,
@@ -48,6 +49,7 @@ export default class GameScene extends Phaser.Scene {
     this.fortress    = new Fortress(this);
     this.tank        = new Tank(this, 1);
     this.enemies     = [];
+    this.powerups    = [];
 
     // ── Turn state ──────────────────────────────────────────
     this.state       = STATE.ANIMATING;
@@ -57,6 +59,9 @@ export default class GameScene extends Phaser.Scene {
     this.isCharging  = false;
     this.chargeStart = 0;
     this.chargeLevel = 0;
+    
+    this.ragActive     = false;
+    this._agentFiring  = false;
 
     // ── Perfect zone (dynamic — changes position & width each shot) ─
     this.perfectMin        = PERFECT_ZONE_MIN;
@@ -97,7 +102,7 @@ export default class GameScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setDepth(6);
 
     this._syncRegistry();
-    this.registry.set('upgrades', { damage: 0, cost: 0, rewind: 0, charge: 0, splits: 0 });
+    this.registry.set('upgrades', { damage: 0, cost: 0, rewind: 0, charge: 0, splits: 0, heal: 0 });
 
     // ── Intro + Start Wave ───────────────────────────────────
     this.tank.introAnimation(() => {
@@ -113,6 +118,19 @@ export default class GameScene extends Phaser.Scene {
   // ─────────────────────────────────────────────────────────
   update(time, delta) {
     if (this.state === STATE.GAME_OVER) return;
+    try {
+      this._doUpdate(time, delta);
+    } catch (err) {
+      console.error('[GameScene.update error]', err);
+      this._errorCount = (this._errorCount || 0) + 1;
+      if (this._errorCount >= 3) {
+        this._triggerBugReport(err);
+      }
+    }
+  }
+
+  _doUpdate(time, delta) {
+    this._errorCount = 0;
 
     // Parallax clouds
     this._bgCloudOffset = (this._bgCloudOffset || 0) + delta * 0.05;
@@ -124,6 +142,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.fortress.update(time, delta);
     for (const e of this.enemies) e.update(time, delta);
+    for (const p of this.powerups) p.update(time, delta);
 
     if (this.state === STATE.PLAYER_TURN) {
       this._handleInput(time);
@@ -246,13 +265,22 @@ export default class GameScene extends Phaser.Scene {
     const lane      = this.tank.currentLane;
 
     spawnMuzzleFlash(this, this.tank.barrelTipX, this.tank.barrelTipY, color);
-    if (isPerfect) {
+    if (isPerfect && !this.ragActive) {
       spawnPerfectBurst(this, this.tank.barrelTipX + 20, LANES[lane]);
       showPerfectBanner(this, this.tank.barrelTipX + 40, LANES[lane]);
       this.cameras.main.flash(150, 220, 200, 0, false);
     }
 
-    const { overheated } = this.ctx.addFromShot(charge);
+    let overheated = false;
+    if (this.ragActive) {
+      this.ragActive = false;
+      this.tank.applyRagVisuals(false);
+      // RAG ignores the heat system
+      this.cameras.main.flash(150, 0, 255, 0, false);
+    } else {
+      const heatRes = this.ctx.addFromShot(charge);
+      overheated = heatRes.overheated;
+    }
 
     this._generatePerfectZone(); // new zone ready for next shot
 
@@ -379,6 +407,11 @@ export default class GameScene extends Phaser.Scene {
                 this.ctx.addFlat(OVERKILL_CTX_PENALTY);
                 showOverkillText(this, target.x, target.y);
               }
+              
+              // 20% Chance for Powerup Drop
+              if (Math.random() < 0.2) {
+                 this._dropPowerup(target.lane, target.steps);
+              }
             } else {
               spawnExplosion(this, target.x, target.y, C.NEON_CYAN, 4);
             }
@@ -432,12 +465,21 @@ export default class GameScene extends Phaser.Scene {
     this._doEnemyAdvance();
   }
 
+  _dropPowerup(lane, steps) {
+    const types = Object.keys(POWERUP_TYPES);
+    const pType = types[Math.floor(Math.random() * types.length)];
+    const p = new Powerup(this, pType, lane, steps);
+    p.setDepth(9.5 + lane * 0.1);
+    this.powerups.push(p);
+  }
+
   _doEnemyAdvance() {
-    // Remove dead enemies first
+    // Remove dead enemies / powerups first
     this._cleanupDead();
 
     const alive = this.enemies.filter(e => e.alive);
-    let pending = alive.length;
+    const activePowerups = this.powerups.filter(p => p.alive);
+    let pending = alive.length + activePowerups.length;
 
     const afterAdvance = () => {
       // Spawn new enemies for next turn
@@ -464,6 +506,17 @@ export default class GameScene extends Phaser.Scene {
 
       if (breached) { this._triggerGameOver(); return; }
 
+      // Check powerup collections
+      for (const p of this.powerups) {
+        if (p.alive && p.steps <= 1) { // Same threshold as killing the codebase but applying to powerups
+          if (p.lane === this.tank.currentLane) {
+            this._collectPowerup(p);
+          } else {
+            p.dissolve(); // Player wasn't there to catch it, poof.
+          }
+        }
+      }
+
       // Check wave complete
       const allSpawned = this.waves.allSpawnsDone(this.waveNum);
       const anyAlive   = this.enemies.some(e => e.alive);
@@ -481,12 +534,93 @@ export default class GameScene extends Phaser.Scene {
     }
 
     let done = 0;
+    const onOneDone = () => {
+      done++;
+      if (done >= pending) this._doEnemyShooting(afterAdvance);
+    };
+
     for (const e of alive) {
-      e.advanceStep(this, () => {
-        done++;
-        if (done >= pending) this._doEnemyShooting(afterAdvance);
-      });
+      e.advanceStep(this, onOneDone);
     }
+    for (const p of activePowerups) {
+      p.advanceStep(this, onOneDone);
+    }
+  }
+
+  _collectPowerup(p) {
+    p.collect();
+    const laneY = LANES[p.lane];
+    this._floatText(TANK_X + 20, laneY - 40, p.pType.label, '#ffaa00');
+    
+    switch (p.pType.key) {
+      case 'RAG':
+        this.ragActive = true;
+        this.tank.applyRagVisuals(true);
+        break;
+      case 'AGENT':
+        this.time.delayedCall(300, () => this._activateAgentMode());
+        break;
+      case 'REWIND':
+        this.ability.addRewindCharge();
+        this._floatText(TANK_X + 20, laneY - 20, '+1 REWIND', '#aa44ff');
+        break;
+      case 'SPLIT':
+        this.ability.splitCharge = SPLIT_COST;
+        this._floatText(TANK_X + 80, GAME_HEIGHT - 60, 'SPLIT READY', '#00e5ff');
+        break;
+    }
+  }
+
+  _activateAgentMode() {
+    this.ctx.active = CTX_MAX - this.ctx.floor;
+    this._agentFiring = true;
+    this._onOverflow();
+
+    const shots = 5;
+    let fired = 0;
+
+    const onAgentComplete = () => {
+      this._agentFiring = false;
+      this._cleanupDead();
+      const allSpawned = this.waves.allSpawnsDone(this.waveNum);
+      const anyAlive   = this.enemies.some(e => e.alive);
+      if (allSpawned && !anyAlive) {
+        this._onWaveCleared();
+      } else if (this.state !== STATE.GAME_OVER) {
+        this.state = STATE.PLAYER_TURN;
+      }
+    };
+
+    const fireShot = () => {
+      if (fired >= shots || this.state === STATE.GAME_OVER) {
+        onAgentComplete();
+        return;
+      }
+      fired++;
+      
+      const allTargets = this.enemies.filter(e => e.alive).sort((a, b) => a.x - b.x);
+      if (allTargets.length === 0) {
+        onAgentComplete();
+        return;
+      }
+      
+      const target = allTargets[0];
+      this.tank.setLane(target.lane);
+      
+      const dmgMult = 1 + ((this.registry.get('upgrades') || {}).damage || 0) * 0.25;
+      const dmg = Math.round(BASE_DAMAGE * Math.random() * dmgMult) + 10; 
+      
+      spawnMuzzleFlash(this, this.tank.barrelTipX, this.tank.barrelTipY, C.WARNING_ORANGE);
+      this._animateShot(target.lane, dmg, false, C.WARNING_ORANGE, () => {
+         if (fired < shots) {
+           this.time.delayedCall(100, fireShot);
+         } else {
+           onAgentComplete();
+         }
+      }, null, 50);
+    };
+    
+    this.time.delayedCall(400, fireShot);
   }
 
   // ─────────────────────────────────────────────────────────
@@ -552,8 +686,13 @@ export default class GameScene extends Phaser.Scene {
     for (const e of this.enemies) {
       if (e.alive) e.forceAdvance(COMPACTION_STEPS);
     }
+    for (const p of this.powerups) {
+      if (p.alive) p.forceAdvance(COMPACTION_STEPS);
+    }
 
-    this.time.delayedCall(600, () => this._endTurn());
+    this.time.delayedCall(600, () => {
+      if (!this._agentFiring) this._endTurn();
+    });
   }
 
   // ─────────────────────────────────────────────────────────
@@ -606,6 +745,13 @@ export default class GameScene extends Phaser.Scene {
 
   _finishShopAndStartWave() {
     this.scene.resume();
+
+    const pendingHeal = this.registry.get('pendingHeal') || 0;
+    if (pendingHeal > 0) {
+      this.fortress.shield = Math.min(100, this.fortress.shield + pendingHeal);
+      this.registry.set('pendingHeal', 0);
+    }
+
     // Pixel zoom in transition
     this.tweens.add({
       targets: this.cameras.main,
@@ -624,8 +770,11 @@ export default class GameScene extends Phaser.Scene {
   // ─────────────────────────────────────────────────────────
   _triggerGameOver() {
     this.state = STATE.GAME_OVER;
-    const hi = Math.max(this.score, parseInt(localStorage.getItem('hiScore') || '0'));
-    localStorage.setItem('hiScore', hi);
+    let hi = this.score;
+    try {
+      hi = Math.max(this.score, parseInt(localStorage.getItem('hiScore') || '0'));
+      localStorage.setItem('hiScore', hi);
+    } catch (_) { /* private browsing or storage full */ }
 
     flash(this, C.DANGER_RED, 0.7, 800);
     shake(this, 15, 600);
@@ -671,11 +820,69 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // ─────────────────────────────────────────────────────────
+  //  Bug report — shown when a runtime error forces game over
+  // ─────────────────────────────────────────────────────────
+  _triggerBugReport(err) {
+    if (this.state === STATE.GAME_OVER) return;
+    this.state = STATE.GAME_OVER;
+
+    let hi = this.score;
+    try {
+      hi = Math.max(this.score, parseInt(localStorage.getItem('hiScore') || '0'));
+      localStorage.setItem('hiScore', hi);
+    } catch (_) { /* private browsing or storage full */ }
+
+    flash(this, C.HEAT_YELLOW, 0.5, 600);
+    shake(this, 10, 400);
+
+    const w = GAME_WIDTH, h = GAME_HEIGHT;
+    const errName = (err && err.name) || 'Error';
+    const errMsg  = (err && err.message) || 'Unknown error';
+    const shortMsg = errMsg.length > 60 ? errMsg.slice(0, 57) + '...' : errMsg;
+
+    this.add.rectangle(w / 2, h / 2, 520, 200, C.VOID, 0.95).setDepth(70);
+
+    this.add.text(w / 2, h / 2 - 65, 'BUG REPORT', {
+      fontFamily: 'monospace', fontSize: '28px', color: '#ffaa00',
+      stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(71);
+
+    this.add.text(w / 2, h / 2 - 32, 'Sorry! Something broke. Your score was saved.', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#cccccc',
+    }).setOrigin(0.5).setDepth(71);
+
+    this.add.text(w / 2, h / 2 - 6, `${errName}: ${shortMsg}`, {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ff6666',
+      stroke: '#000000', strokeThickness: 2,
+      wordWrap: { width: 480 },
+    }).setOrigin(0.5).setDepth(71);
+
+    this.add.text(w / 2, h / 2 + 28, `SCORE: ${this.score.toLocaleString()}`, {
+      fontFamily: 'monospace', fontSize: '18px', color: '#f0f0ff',
+    }).setOrigin(0.5).setDepth(71);
+
+    this.add.text(w / 2, h / 2 + 58, 'PRESS SPACE TO RETURN TO MENU', {
+      fontFamily: 'monospace', fontSize: '14px', color: '#6b2fa0',
+    }).setOrigin(0.5).setDepth(71);
+
+    this.time.delayedCall(500, () => {
+      this.input.keyboard.once('keydown-SPACE', () => {
+        this.scene.stop('UIScene');
+        this.scene.start('MenuScene');
+      });
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────
   //  Helpers
   // ─────────────────────────────────────────────────────────
   _cleanupDead() {
     this.enemies = this.enemies.filter(e => {
       if (!e.alive) { e.destroy(); return false; }
+      return true;
+    });
+    this.powerups = this.powerups.filter(p => {
+      if (!p.alive) { return false; } // They handle their own destruction animation
       return true;
     });
   }
@@ -786,6 +993,7 @@ export default class GameScene extends Phaser.Scene {
     this.registry.set('splitPct',    this.ability.splitPct);
     this.registry.set('splitReady',  this.ability.splitReady);
     this.registry.set('splitMode',   this.splitMode);
-    this.registry.set('hiScore',     parseInt(localStorage.getItem('hiScore') || '0'));
+    try { this.registry.set('hiScore', parseInt(localStorage.getItem('hiScore') || '0')); }
+    catch (_) { this.registry.set('hiScore', 0); }
   }
 }

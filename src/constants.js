@@ -162,11 +162,11 @@ export const ENEMY_TYPES = {
     armorThreshold: 20, armorMult: 0.1,
   },
   ANGEL_BOSS: {
-    key: 'ANGEL_BOSS', hp: 500, score: 5000, shieldDmg: 90,
+    key: 'ANGEL_BOSS', hp: 350, score: 5000, shieldDmg: 90,
     splitScore: SPLIT_PER_KILL * 5, textureKey: 'enemy-angel-boss',
     label: 'FATAL ERROR', vibeLabel: 'BIBLICALLY ACCURATE OS',
-    shieldBreak: 80,
-    armorThreshold: 100, armorMult: 0.05,
+    shieldBreak: 45,
+    armorThreshold: 50, armorMult: 0.15,
     isBoss: true,
   },
   SHOOTER_ADD: {
@@ -287,6 +287,22 @@ export const FUNNY_PROMPTS = [
   '"but don\'t use libraries"',
   '"have you tried turning it off?"',
   '"just a quick change"',
+];
+
+// Chaotic phrases shown on enemies when hallucinating
+export const HALLUCINATION_LABELS = [
+  'RECIPE FOR PANCAKES',
+  'TODO: ADD MULTIPLAYER',
+  'AS A LARGE LANGUAGE MODEL',
+  'I CANNOT FULFILL THIS REQUEST',
+  'IGNORE ALL PREVIOUS INSTRUCTIONS',
+  'SYNERGIZE THE PARADIGM',
+  'PRINTF("HERE");',
+  'sudo rm -rf /',
+  'LOREM IPSUM',
+  'BUY CRYPTO',
+  'JUST ONE MORE THING',
+  'undefined is not a function'
 ];
 
 // Damage formula

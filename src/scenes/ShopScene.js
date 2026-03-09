@@ -60,16 +60,14 @@ export default class ShopScene extends Phaser.Scene {
   }
 
   _selectSkill(id) {
-    const ups = this.registry.get('upgrades') || { damage: 0, cost: 0, rewind: 0, charge: 0, splits: 0 };
+    const ups = this.registry.get('upgrades') || { damage: 0, cost: 0, rewind: 0, charge: 0, splits: 0, heal: 0 };
+    ups[id] = (ups[id] || 0) + 1;
+    this.registry.set('upgrades', ups);
+
     if (id === 'heal') {
-      const shield = this.registry.get('shield') || 100;
-      this.registry.set('shield', Math.min(100, shield + 30));
-    } else {
-      ups[id] = (ups[id] || 0) + 1;
-      this.registry.set('upgrades', ups);
+      this.registry.set('pendingHeal', 30);
     }
     
-    // Close shop, resume game
     this.scene.stop();
     const gameScene = this.scene.get('GameScene');
     if (gameScene) {

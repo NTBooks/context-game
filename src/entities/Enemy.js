@@ -2,11 +2,16 @@ import {
   ENEMY_TYPES, LANES, ENEMY_BOUNDARY_X, STEP_SIZE,
   STEP_ADVANCE_MS, C,
   ENEMY_SIZE_MIN, ENEMY_SIZE_MAX,
+  CTX_HALLUCINATE, HALLUCINATION_LABELS
 } from '../constants.js';
 
 export class Enemy extends Phaser.GameObjects.Container {
   constructor(scene, type, lane, steps) {
-    const cfg = ENEMY_TYPES[type];
+    let cfg = ENEMY_TYPES[type];
+    if (!cfg) {
+      console.warn(`[Enemy] Unknown type "${type}", falling back to first available`);
+      cfg = ENEMY_TYPES[Object.keys(ENEMY_TYPES)[0]];
+    }
     const x   = ENEMY_BOUNDARY_X + steps * STEP_SIZE;
     const y   = LANES[lane];
     super(scene, x, y);
@@ -18,6 +23,8 @@ export class Enemy extends Phaser.GameObjects.Container {
     this._flashTimer = 0;
     this._wingPhase  = Math.random() * Math.PI * 2;
     this._everHit    = false;
+    this._isHallucinating = false;
+    this._originalHue = 0xffffff;
 
     // Variable size: bigger enemies have more HP, smaller ones less
     this._sizeScale  = cfg.isBoss ? 1.0 : Phaser.Math.FloatBetween(ENEMY_SIZE_MIN, ENEMY_SIZE_MAX);
@@ -132,6 +139,53 @@ export class Enemy extends Phaser.GameObjects.Container {
       this.hpBar.width = this.hpBarWidth * pct;
       this.hpBar.fillColor = pct > 0.5 ? C.NEON_GREEN : pct > 0.25 ? C.HEAT_YELLOW : C.DANGER_RED;
     }
+
+    // Check Hallucination State
+    const currentCtx = this.scene.registry.get('ctx') || 0;
+    const shouldHallucinate = currentCtx >= CTX_HALLUCINATE;
+
+    if (shouldHallucinate && !this._isHallucinating) {
+      this._startHallucinating();
+    } else if (!shouldHallucinate && this._isHallucinating) {
+      this._stopHallucinating();
+    }
+
+    if (this._isHallucinating) {
+      // Chaotic rendering effects
+      if (Math.random() < 0.05) {
+        this.sprite.x = Phaser.Math.Between(-4, 4);
+        this.sprite.y = Phaser.Math.Between(-4, 4);
+      }
+    }
+  }
+
+  _startHallucinating() {
+    this._isHallucinating = true;
+    
+    // Pick a completely random texture from other enemies
+    const keys = Object.keys(ENEMY_TYPES);
+    const randomKey = keys[Math.floor(Math.random() * keys.length)];
+    this.sprite.setTexture(ENEMY_TYPES[randomKey].textureKey);
+
+    // Chaotic tint
+    this._originalHue = Phaser.Math.Between(0, 0xffffff);
+    this.sprite.setTint(this._originalHue);
+
+    // Glitch label
+    const randLabel = HALLUCINATION_LABELS[Math.floor(Math.random() * HALLUCINATION_LABELS.length)];
+    this.vibeLabel.setText(randLabel);
+    this.vibeLabel.setColor('#ffff00');
+  }
+
+  _stopHallucinating() {
+    this._isHallucinating = false;
+    
+    // Restore sanity
+    this.sprite.setTexture(this.cfg.textureKey);
+    this.sprite.clearTint();
+    this.sprite.setPosition(0, 0);
+    this.vibeLabel.setText(this.cfg.label);
+    this.vibeLabel.setColor('#ff88ff');
   }
 
   /**
@@ -161,6 +215,14 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.sprite.setTint(0xffffff);
     this._flashTimer = 80;
     if (this.hp <= 0) { this.alive = false; return { killed: true, bounced: false }; }
+    
+    // If hallucinating we need to restore the chaotic tint after hit flash
+    if (this._isHallucinating) {
+      this.scene.time.delayedCall(80, () => {
+        if (this.alive && this._isHallucinating) this.sprite.setTint(this._originalHue);
+      });
+    }
+
     return { killed: false, bounced: false };
   }
 
