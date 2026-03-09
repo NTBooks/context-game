@@ -171,7 +171,8 @@ export default class MenuScene extends Phaser.Scene {
     };
     this.input.keyboard.once('keydown-SPACE', startGame);
     startText.once('pointerdown', (pointer) => {
-      if (pointer.button === 0) startGame();
+      // On touch devices, `pointer.button` can be `undefined`; treat that as a primary tap.
+      if (pointer.button == null || pointer.button === 0) startGame();
     });
 
     // Version tag (padded from bottom edge)
